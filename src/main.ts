@@ -205,6 +205,7 @@ async function start() {
   const recorder = new ReplayRecorder();
   let lastReplay: Replay | null = null;
   let replayT = 0;
+  let hiddenForReplay: THREE.Object3D[] = [];
   const replayBtn = $('replay-btn') as HTMLButtonElement;
   const replayBadge = $('replay-badge');
   replayBtn.addEventListener('click', () => controls.replay());
@@ -377,6 +378,12 @@ async function start() {
     speech.hide();
     dave.idle();
     juice.clear();
+    // The camera is up inside the pinsetter: lift the masking unit out of its way
+    hiddenForReplay = [];
+    scene.traverseVisible((o) => {
+      if (o.userData.masking) hiddenForReplay.push(o);
+    });
+    for (const o of hiddenForReplay) o.visible = false;
     replayBadge.hidden = false;
     document.body.classList.add('replaying');
   }
@@ -386,6 +393,8 @@ async function start() {
     phase = 'result';
     replayBadge.hidden = true;
     document.body.classList.remove('replaying');
+    for (const o of hiddenForReplay) o.visible = true;
+    hiddenForReplay = [];
     sound.setRoll(0, false);
     // Back to Dave for his reaction, then on to the next ball as usual
     resultTime = REACTION_AT;
@@ -439,6 +448,7 @@ async function start() {
 
   /** Clears the lane and starts a new game in the chosen mode. */
   function startGame(newMode: Mode, names: string[] = ['You']) {
+    endReplay();
     mode = newMode;
     match = newMode === 'practice' ? null : new Match(names);
     trackers = names.map(() => new GameTracker());
@@ -953,6 +963,10 @@ async function start() {
     },
     get replay() {
       return lastReplay;
+    },
+    /** Jump the replay to a moment (seconds into the throw), for checking camera shots. */
+    seekReplay(t: number) {
+      replayT = t;
     },
   };
 

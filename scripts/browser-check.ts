@@ -12,6 +12,7 @@ type Game = {
   replay: { end: number } | null;
   match: { players: { rolls: number[] }[] } | null;
   physics: { ball: { translation(): { z: number } } };
+  scene: { traverse(fn: (o: { visible: boolean; userData: Record<string, unknown> }) => void): void };
   controls: { pause(): void; advance(): void; replay(): void; fastForward(): void };
   startGame(mode: string): void;
   throwBall(x?: number, aim?: number, power?: number, spin?: number): void;
@@ -81,10 +82,22 @@ async function main() {
 
     // Replay from the pinsetter camera
     check(await page.isVisible('#replay-btn'), 'replay button appears after the throw');
+    // The replay camera sits up in the pinsetter, so the masking unit is lifted out of the way
+    const maskingShown = () =>
+      page.evaluate(() => {
+        let shown = 0;
+        window.__game.scene.traverse((o) => {
+          if (o.userData.masking && o.visible) shown++;
+        });
+        return shown;
+      });
+    const maskingBefore = await maskingShown();
     await page.evaluate(() => window.__game.controls.replay());
     check((await phase(page)) === 'replay' && (await page.isVisible('#replay-badge')), 'replay starts');
+    check(maskingBefore > 0 && (await maskingShown()) === 0, 'the masking unit is hidden for the pinsetter camera');
     await waitPhase(page, 'result', 'sweeping', 'aiming');
     check(!(await page.isVisible('#replay-badge')), 'replay finishes and hands back to the game');
+    check((await maskingShown()) === maskingBefore, 'the masking unit is back after the replay');
 
     // On to the next ball
     await page.evaluate(() => window.__game.controls.advance());

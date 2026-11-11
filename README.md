@@ -33,7 +33,7 @@ Also: a "How to bowl" card on your first game (and in the pause menu), a Graphic
 | Disco Inferno | Mirror ball, sweeping spotlights, flashing dance floor | "Disco Dave" (disco) |
 | Rooftop at Sunset | Open sky, city skyline, string lights | "Bossa Marinara" (bossa nova) |
 
-**Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera tucked inside the pinsetter. It starts zoomed in on the ball as it leaves Dave's hand, opens up as the ball arrives, and drops into slow motion for the impact, juice and all. Tap to skip.
+**Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera high up inside the pinsetter, against the back wall. Every pin is in view as the ball rolls down the lane towards them; the camera tilts down as it arrives and drops into slow motion for the impact, juice and all. Tap to skip.
 
 After each throw the tomato rolls home along a ball return chute between the lanes. And the tomato isn't perfectly round: when its stem rolls under, it can give the ball a small hop at a random point down the lane.
 

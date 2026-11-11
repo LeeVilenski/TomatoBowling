@@ -10,6 +10,7 @@ import {
   PIT_END_Z,
   gutterPlates,
 } from '../game/dimensions';
+import { maskingPart } from './decor';
 
 const BOARDS = 39;
 
@@ -150,9 +151,9 @@ export function buildAlley(scene: THREE.Scene) {
 
   // Masking unit above the pins: a red panel with a tomato-ish stripe
   const maskMat = new THREE.MeshStandardMaterial({ color: '#c8281e', roughness: 0.6, emissive: '#3a0805' });
-  scene.add(box(OUTER_HALF * 2 + 0.6, 0.55, 0.08, maskMat, 0, 0.95, DECK_END_Z + 0.4));
+  scene.add(maskingPart(box(OUTER_HALF * 2 + 0.6, 0.55, 0.08, maskMat, 0, 0.95, DECK_END_Z + 0.4)));
   const stripeMat = new THREE.MeshStandardMaterial({ color: '#3fae3a', emissive: '#0c2a0a' });
-  scene.add(box(OUTER_HALF * 2 + 0.6, 0.06, 0.09, stripeMat, 0, 0.72, DECK_END_Z + 0.4));
+  scene.add(maskingPart(box(OUTER_HALF * 2 + 0.6, 0.06, 0.09, stripeMat, 0, 0.72, DECK_END_Z + 0.4)));
 
 
   // Lighting
