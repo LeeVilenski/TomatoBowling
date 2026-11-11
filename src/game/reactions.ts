@@ -58,14 +58,38 @@ export function classifyThrow(knocked: number, standingBefore: number, fresh: bo
   return 'meh';
 }
 
+// Dave is a tomato, but he's also an IT professional, so it's half produce puns, half tech puns.
 export const LINES: Record<ReactionKind, string[]> = {
-  strike: ['Ketchup with THAT!', 'Tom-ah-TOE-tally!', 'Saucy!', 'Fresh off the vine!', "That's how we roll!", 'Heirloom quality!'],
-  spare: ['Picked it up!', 'Spare me nothing!', 'Nice and juicy.', 'Ripe for the picking!', 'Squeezed it in!'],
-  good: ['Nearly!', 'So close!', 'Salsa-tisfactory.', 'Getting warmer.', 'Almost ripe!'],
-  meh: ['Meh.', 'Could be riper.', 'A little green.', 'Sow-so.', 'Room to grow.'],
-  gutter: ['...I\'m sauce.', 'Puréed.', "I've been canned.", 'Squashed it.', 'Not my vine-st hour.', 'Too much juice.'],
-  split: ['Hmm. A split.', "That's a pickle.", 'Split pea soup...', 'Gonna need a bigger tomato.'],
-  miss: ['Missed it!', 'Oops.', 'Not my day.', 'Bit of a bruise.'],
+  strike: [
+    'Ketchup with THAT!', 'Tom-ah-TOE-tally!', 'Saucy!', 'Fresh off the vine!', "That's how we roll!", 'Heirloom quality!',
+    'Ctrl + Alt + DELIGHT!', '404: Pins not found!', 'Ten pins. Zero bugs.', 'Deployed to production!', 'Pushed straight to main!',
+    'Clean install!', 'All tests passing!',
+  ],
+  spare: [
+    'Picked it up!', 'Spare me nothing!', 'Nice and juicy.', 'Ripe for the picking!', 'Squeezed it in!',
+    'Hotfix applied.', 'Patched it!', 'Restored from backup!', 'Caught that exception!', 'Bug closed. Ship it.',
+  ],
+  good: [
+    'Nearly!', 'So close!', 'Salsa-tisfactory.', 'Getting warmer.', 'Almost ripe!',
+    '99% uploaded...', 'Just one failing test.', 'Nearly passed QA.', 'Almost compiled!',
+  ],
+  meh: [
+    'Meh.', 'Could be riper.', 'A little green.', 'Sow-so.', 'Room to grow.',
+    'Works on my machine.', 'Needs a refactor.', 'Still buffering...', 'That was the beta.', 'Low bandwidth roll.',
+  ],
+  gutter: [
+    "...I'm sauce.", 'Puréed.', "I've been canned.", 'Squashed it.', 'Not my vine-st hour.',
+    'Blue screen of death.', 'Have you tried turning it off and on again?', 'Segmentation fault.',
+    'Fatal error: pins not found.', 'Dropped packets.', "That's going in the logs.",
+  ],
+  split: [
+    'Hmm. A split.', "That's a pickle.", 'Split pea soup...', 'Gonna need a bigger tomato.',
+    'Merge conflict!', 'Needs a git rebase.', 'Two branches, no merge.', 'Load balancing... badly.',
+  ],
+  miss: [
+    'Missed it!', 'Oops.', 'Not my day.', 'Bit of a bruise.',
+    'Null pointer.', 'Request timed out.', 'Ping failed.', 'Connection refused.',
+  ],
 };
 
 const lastLine = new Map<ReactionKind, string>();

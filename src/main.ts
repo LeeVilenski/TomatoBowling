@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './style.css';
 import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, OUTER_HALF } from './game/dimensions';
 import { BowlingPhysics, PHYSICS_DT } from './game/physics';
@@ -59,6 +60,10 @@ async function start() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   const scene = new THREE.Scene();
+  // Soft studio reflections so the shiny ball, pins and lane catch some light
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.18;
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
   const { keyLight } = buildAlley(scene);
 
@@ -95,11 +100,13 @@ async function start() {
   equip(equipped.ball, equipped.suit);
 
   // ---- Graphics quality: Low drops shadows and renders at a lower resolution ----
+  // Only very modest devices start on Low (most phones report 6+ cores)
   const lowEndGuess =
-    (navigator.hardwareConcurrency ?? 8) <= 4 || ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 3;
+    (navigator.hardwareConcurrency ?? 8) <= 2 || ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 2;
   let quality = storage.text('quality', lowEndGuess ? 'low' : 'high');
   function applyQuality() {
-    renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+    // Low still renders at 1.5× on sharp screens so edges don't look jagged
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'low' ? 1.5 : 2));
     keyLight.castShadow = quality !== 'low';
   }
   applyQuality();
@@ -144,6 +151,15 @@ async function start() {
   const splashed = new Set<number>();
   let releaseBlend = 0; // eases the ball from Dave's hand down onto the lane
   let inGutter = false;
+  let timeScale = 1; // 3 while fast-forwarding a throw
+  const ffBtn = $('ff-btn') as HTMLButtonElement;
+  const FAST = 3;
+  function setFastForward(on: boolean) {
+    timeScale = on ? FAST : 1;
+    ffBtn.setAttribute('aria-pressed', String(on));
+    ffBtn.textContent = on ? `⏩ ${FAST}× speed` : '⏩ Fast forward';
+  }
+  ffBtn.addEventListener('click', () => controls.fastForward());
   const releaseFrom = new THREE.Vector3();
 
   // ---- Game mode state ----
@@ -207,6 +223,7 @@ async function start() {
     const knocked = totalDown - downBefore;
     const standingBefore = 10 - downBefore;
     lastThrow.knocked = knocked;
+    setFastForward(false);
     phase = 'result';
     resultTime = 0;
     reactionShown = false;
@@ -254,7 +271,7 @@ async function start() {
     speech.hide();
     sound.pinsetter();
     physics.holdBall(aimX);
-    setStatus(setterMode === 'clear' ? 'Clearing the deadwood…' : 'Setting the pins…');
+    setStatus(setterMode === 'clear' ? 'Clearing the cache…' : 'Rebooting the rack…');
     const rack = setterMode === 'rerack' && mode === 'practice' && practiceRack ? practiceRack : undefined;
     pinsetter.start(setterMode, () => afterPinsetter(setterMode), rack);
   }
@@ -331,6 +348,7 @@ async function start() {
     physics.resetPins();
     physics.holdBall(aimX);
     pinsetter.cancel();
+    setFastForward(false);
     phase = 'aiming';
     dave.idle();
     speech.hide();
@@ -632,6 +650,9 @@ async function start() {
       // Only in practice: in a real game the pinsetter follows the rules
       if (mode === 'practice' && openScreen === null && (phase === 'aiming' || phase === 'result')) runPinsetter('rerack');
     },
+    fastForward() {
+      if (openScreen === null && (phase === 'rolling' || phase === 'settling')) setFastForward(timeScale === 1);
+    },
     pause() {
       if (openScreen === null && phase !== 'charging') showScreen('pause');
       else if (openScreen === 'pause') showScreen(null);
@@ -925,23 +946,25 @@ async function start() {
   function frame(now: number) {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
-    acc += dt;
+    acc += dt * timeScale;
     let steps = 0;
-    while (acc >= PHYSICS_DT && steps < 12) {
+    const maxSteps = 12 * timeScale;
+    while (acc >= PHYSICS_DT && steps < maxSteps) {
       pinsetter.update(PHYSICS_DT);
       physics.step();
       acc -= PHYSICS_DT;
       steps++;
     }
-    if (steps === 12) acc = 0;
+    if (steps === maxSteps) acc = 0;
 
-    updatePhase(dt);
+    updatePhase(dt * timeScale);
+    ffBtn.hidden = !(openScreen === null && (phase === 'rolling' || phase === 'settling'));
     if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') dave.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
     dave.update(dt);
     releaseBlend = Math.max(0, releaseBlend - dt / 0.15);
     syncMeshes();
     updateJuice();
-    juice.update(dt);
+    juice.update(dt * timeScale);
     updateSounds();
     updateAimLine();
     updateCamera(dt);

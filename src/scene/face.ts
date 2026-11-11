@@ -135,11 +135,13 @@ export function createFaceTextures(): Record<Expression, THREE.CanvasTexture> {
   const out = {} as Record<Expression, THREE.CanvasTexture>;
   for (const e of all) {
     const c = document.createElement('canvas');
-    c.width = c.height = SIZE;
-    drawFace(c.getContext('2d')!, e);
+    c.width = c.height = SIZE * 2; // drawn at double resolution so close-ups stay crisp
+    const g = c.getContext('2d')!;
+    g.scale(2, 2);
+    drawFace(g, e);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = 8;
     out[e] = tex;
   }
   return out;

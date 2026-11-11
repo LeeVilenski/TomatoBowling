@@ -48,6 +48,7 @@ export class BowlingPhysics {
   readonly ball: RAPIER.RigidBody;
   readonly pins: RAPIER.RigidBody[] = [];
   private ballCollider!: RAPIER.Collider;
+  private lane!: RAPIER.Collider;
   ballRadius = BALL_RADIUS;
   private pinByCollider = new Map<number, number>();
   private readonly spots = pinSpots();
@@ -118,7 +119,7 @@ export class BowlingPhysics {
     friction = 0.3,
     angleZ = 0,
   ) {
-    this.world.createCollider(
+    return this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(hx, hy, hz)
         .setTranslation(x, y, z)
         .setRotation({ x: 0, y: 0, z: Math.sin(angleZ / 2), w: Math.cos(angleZ / 2) })
@@ -129,15 +130,11 @@ export class BowlingPhysics {
 
   private buildLane() {
     const thick = 0.2;
-    // Approach, oiled front section and dry back section + pin deck, end to end.
-    const sections: [number, number, number][] = [
-      [APPROACH_START_Z, 0, APPROACH_FRICTION],
-      [0, OIL_END_Z, OIL_FRICTION],
-      [OIL_END_Z, DECK_END_Z, DRY_FRICTION],
-    ];
-    for (const [from, to, friction] of sections) {
-      this.fixed(LANE_HALF, thick / 2, (from - to) / 2, 0, -thick / 2, (from + to) / 2, friction);
-    }
+    // The approach, then the lane and pin deck as ONE continuous surface. (Two pieces end to
+    // end leave a seam the ball can catch and bounce on.) The oil is handled in step(): the
+    // lane's grip changes depending on where the ball is.
+    this.fixed(LANE_HALF, thick / 2, APPROACH_START_Z / 2, 0, -thick / 2, APPROACH_START_Z / 2, APPROACH_FRICTION);
+    this.lane = this.fixed(LANE_HALF, thick / 2, -DECK_END_Z / 2, 0, -thick / 2, DECK_END_Z / 2, OIL_FRICTION);
     // Approach is wider than the lane: fill in beside the gutters behind the foul line.
     for (const side of [-1, 1]) {
       this.fixed(GUTTER_HALF, thick / 2, APPROACH_START_Z / 2, side * (LANE_HALF + GUTTER_HALF), -thick / 2, APPROACH_START_Z / 2);
@@ -239,6 +236,8 @@ export class BowlingPhysics {
   }
 
   step() {
+    // Oily front of the lane, dry back end: the ball skids, then grips and hooks
+    this.lane.setFriction(this.ball.translation().z > OIL_END_Z ? OIL_FRICTION : DRY_FRICTION);
     this.world.step();
   }
 

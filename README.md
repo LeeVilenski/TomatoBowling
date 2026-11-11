@@ -52,6 +52,7 @@ Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`
 - Swipe up to throw. A faster flick gives more power.
 - Aim by tilting the start of your swipe left or right. The yellow line shows where you're aiming while you swipe.
 - Bend the end of your swipe to add spin. The ball curves the same way, late in the lane.
+- Tap ⏩ while the ball rolls to speed it up 3×.
 
 **Mouse and keyboard**
 
@@ -61,6 +62,7 @@ Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`
 | Aim | Scroll wheel | A / D |
 | Spin | Spin ◀ ▶ buttons | Q / E |
 | Throw | Hold the button, release to throw | Hold Space, release to throw |
+| Fast forward a rolling ball (3×) | ⏩ button | F |
 | Skip the wait after a throw | Click | Space |
 | Fresh rack (practice) | | R |
 | Pause | ❚❚ button | Esc or P |

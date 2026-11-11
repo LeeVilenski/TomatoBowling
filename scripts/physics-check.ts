@@ -40,6 +40,23 @@ async function main() {
     check(ballY > -0.6, `${s.name}: ball stays inside the alley (y ${ballY.toFixed(2)})`);
   }
 
+  // The ball should never bounce off the lane on its way down
+  for (const speed of [3, 6, 8, 11]) {
+    for (const spin of [0, 1]) {
+      ph.resetPins();
+      for (const i of ph.pins.keys()) ph.removePin(i);
+      ph.holdBall(0);
+      run(5);
+      ph.throwBall({ x: 0, angle: 0, speed, spin: -spin });
+      let highest = 0;
+      for (let i = 0; i < 2400 && ph.ball.translation().z > -17.5; i++) {
+        ph.step();
+        highest = Math.max(highest, ph.ball.translation().y - ph.ballRadius);
+      }
+      check(highest < 0.01, `ball stays on the lane at ${speed} m/s${spin ? ' with spin' : ''} (max lift ${(highest * 100).toFixed(1)} cm)`);
+    }
+  }
+
   // Pinsetter: after a first ball, standing pins come back and fallen ones are cleared
   const setter = new Pinsetter(ph, new Object3D());
   const cycle = (mode: 'clear' | 'rerack') => {

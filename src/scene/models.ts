@@ -3,9 +3,11 @@ import { BALL_RADIUS, PIN_PROFILE } from '../game/dimensions';
 
 /** A white pin with two red neck stripes. Origin is at the base. */
 export function createPinMesh(): THREE.Group {
-  const pts = PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y));
+  // Smooth curve through the profile points so the pin's outline isn't faceted
+  const curve = new THREE.SplineCurve(PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)));
+  const pts = curve.getPoints(60).map((p) => new THREE.Vector2(Math.max(0, p.x), p.y));
   const body = new THREE.Mesh(
-    new THREE.LatheGeometry(pts, 24),
+    new THREE.LatheGeometry(pts, 40),
     new THREE.MeshStandardMaterial({ color: '#f7f4ee', roughness: 0.25 }),
   );
   body.castShadow = true;
@@ -18,7 +20,7 @@ export function createPinMesh(): THREE.Group {
     [0.247, 0.0234],
     [0.262, 0.0238],
   ]) {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.0012, r + 0.0012, 0.008, 24, 1, true), stripeMat);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.0012, r + 0.0012, 0.008, 40, 1, true), stripeMat);
     ring.position.y = y;
     group.add(ring);
   }
@@ -41,14 +43,14 @@ export const BALL_STYLES: Record<string, BallStyle> = {
   cherry: { colour: '#ff3418', radius: 0.095, roughness: 0.12, metalness: 0.05, leaf: '#2f8f2a' },
   green: { colour: '#7cc43a', radius: BALL_RADIUS, roughness: 0.25, metalness: 0.0, leaf: '#1f6b1c' },
   heirloom: { colour: '#e0261b', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.05, leaf: '#2f8f2a', stripes: ['#d9361a', '#ffb02e', '#8bbf3a'] },
-  golden: { colour: '#ffcc3a', radius: BALL_RADIUS, roughness: 0.22, metalness: 0.35, leaf: '#c99a1e', glow: '#6b4a00' },
+  golden: { colour: '#ffcc3a', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.7, leaf: '#c99a1e', glow: '#4a3300' },
 };
 
 /** A bowling ball made to look like a tomato: soft lobes, a leafy top and a stalk. */
 export function createTomatoBall(styleId = 'classic'): THREE.Group {
   const style = BALL_STYLES[styleId] ?? BALL_STYLES.classic;
   const r = style.radius;
-  const geo = new THREE.SphereGeometry(r, 48, 32);
+  const geo = new THREE.SphereGeometry(r, 64, 40);
   // Gentle vertical grooves like a tomato, without changing the round silhouette much
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();

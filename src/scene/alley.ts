@@ -13,58 +13,72 @@ import {
 
 const BOARDS = 39;
 
-/** Canvas texture for the wooden boards, arrows and dots. */
-function laneTexture(lengthM: number): THREE.CanvasTexture {
-  const pxPerM = 160;
-  const w = 256;
-  const h = Math.round(lengthM * pxPerM);
+/**
+ * Wooden boards: a small texture that repeats down the lane. The boards run lengthways, so
+ * one strip of pixels per row is all it needs, and it stays sharp at any distance.
+ */
+function boardsTexture(lengthM: number): THREE.CanvasTexture {
+  const w = 1024;
+  const h = 64;
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const g = c.getContext('2d')!;
-
   const boardW = w / BOARDS;
   for (let i = 0; i < BOARDS; i++) {
     const t = (i * 37) % 7;
     g.fillStyle = `hsl(${32 + t}, ${55 + t * 2}%, ${62 - t * 1.5}%)`;
     g.fillRect(i * boardW, 0, boardW + 1, h);
-    g.fillStyle = 'rgba(80,45,15,0.25)';
-    g.fillRect(i * boardW, 0, 0.6, h);
+    // A little grain within each board
+    for (let k = 0; k < 6; k++) {
+      g.fillStyle = `rgba(90, 50, 15, ${0.04 + ((i * 13 + k * 7) % 5) * 0.012})`;
+      g.fillRect(i * boardW + ((k * 5 + i) % Math.floor(boardW)), 0, 1, h);
+    }
+    g.fillStyle = 'rgba(80,45,15,0.3)';
+    g.fillRect(i * boardW, 0, 1, h);
   }
-
-  // Canvas y=0 is the far (pin) end; y=h is the near (approach) end.
-  const zToY = (z: number) => ((z - DECK_END_Z) / lengthM) * h;
-  const boardX = (board: number) => w - (board - 0.5) * boardW; // board 1 is on the right
-
-  // Foul line
-  g.fillStyle = '#2a1608';
-  g.fillRect(0, zToY(0) - 2, w, 4);
-
-  // Targeting arrows ~15 ft out, in a V pointing down the lane
-  g.fillStyle = '#7a1d12';
-  for (const board of [5, 10, 15, 20, 25, 30, 35]) {
-    const fromCentre = Math.abs(board - 20) / 5;
-    const z = -4.57 - fromCentre * 0.3;
-    const x = boardX(board);
-    const y = zToY(z);
-    g.beginPath();
-    g.moveTo(x, y - 18);
-    g.lineTo(x - 4, y + 6);
-    g.lineTo(x + 4, y + 6);
-    g.closePath();
-    g.fill();
-  }
-  // Guide dots ~7 ft out
-  for (const board of [3, 5, 8, 11, 14, 26, 29, 32, 35, 37]) {
-    g.beginPath();
-    g.arc(boardX(board), zToY(-2.13), 2.5, 0, Math.PI * 2);
-    g.fill();
-  }
-
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, lengthM / 2);
+  tex.anisotropy = 16;
   return tex;
+}
+
+/** Foul line, targeting arrows and guide dots, drawn as real shapes so they stay crisp. */
+function laneMarkings(centreX: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: '#7a1d12', roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 });
+  const flat = (geo: THREE.BufferGeometry, x: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(centreX + x, 0.0012, z);
+    m.receiveShadow = true;
+    g.add(m);
+  };
+  const boardW = LANE_WIDTH / BOARDS;
+  const boardX = (board: number) => LANE_HALF - (board - 0.5) * boardW; // board 1 is on the right
+
+  const foul = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH, 0.02), new THREE.MeshStandardMaterial({ color: '#2a1608', polygonOffset: true, polygonOffsetFactor: -2 }));
+  foul.rotation.x = -Math.PI / 2;
+  foul.position.set(centreX, 0.0012, 0);
+  g.add(foul);
+
+  // Arrows ~15 ft out in a V, each pointing down the lane
+  const arrow = new THREE.Shape();
+  arrow.moveTo(0, 0.12);
+  arrow.lineTo(-0.017, -0.035);
+  arrow.lineTo(0.017, -0.035);
+  arrow.closePath();
+  const arrowGeo = new THREE.ShapeGeometry(arrow);
+  for (const board of [5, 10, 15, 20, 25, 30, 35]) {
+    const fromCentre = Math.abs(board - 20) / 5;
+    flat(arrowGeo, boardX(board), -4.57 - fromCentre * 0.3);
+  }
+  // Guide dots ~7 ft out
+  const dotGeo = new THREE.CircleGeometry(0.011, 20);
+  for (const board of [3, 5, 8, 11, 14, 26, 29, 32, 35, 37]) flat(dotGeo, boardX(board), -2.13);
+  return g;
 }
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) {
@@ -81,7 +95,7 @@ export function buildAlley(scene: THREE.Scene) {
   // Lane surface (approach + lane + deck)
   const laneLen = APPROACH_START_Z - DECK_END_Z;
   const laneMat = new THREE.MeshStandardMaterial({
-    map: laneTexture(laneLen),
+    map: boardsTexture(laneLen),
     roughness: 0.25,
     metalness: 0.0,
   });
@@ -90,6 +104,7 @@ export function buildAlley(scene: THREE.Scene) {
   lane.position.set(0, 0, (APPROACH_START_Z + DECK_END_Z) / 2);
   lane.receiveShadow = true;
   scene.add(lane);
+  scene.add(laneMarkings(0));
 
   // Gutters
   const gutterMat = new THREE.MeshStandardMaterial({ color: '#3a3d46', roughness: 0.5, metalness: 0.4 });
@@ -119,6 +134,7 @@ export function buildAlley(scene: THREE.Scene) {
     const n = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH, laneLen), laneMat);
     n.rotation.x = -Math.PI / 2;
     n.position.set(side * (OUTER_HALF * 2 + 0.34), -0.001, (APPROACH_START_Z + DECK_END_Z) / 2);
+    scene.add(laneMarkings(side * (OUTER_HALF * 2 + 0.34)));
     n.receiveShadow = true;
     scene.add(n);
   }
@@ -152,7 +168,7 @@ export function buildAlley(scene: THREE.Scene) {
   key.position.set(1.5, 6, -14);
   key.target.position.set(0, 0, -18.8);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.mapSize.set(2048, 2048);
   const sc = key.shadow.camera;
   sc.left = -1.5;
   sc.right = 1.5;

@@ -12,6 +12,7 @@ document.body.append(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#1b1026');
 scene.add(new THREE.HemisphereLight('#fff3e0', '#2a1838', 1.2));
+renderer.setPixelRatio(2);
 const sun = new THREE.DirectionalLight('#fff', 1.5);
 sun.position.set(2, 5, -3);
 scene.add(sun);
@@ -36,8 +37,9 @@ const daves = states.map((s, i) => {
 
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 50);
 if (view === 'front') camera.position.set(0, 1.4, -7.5);
+else if (view === 'close') camera.position.set(-1.8, 1.45, -2.6);
 else camera.position.set(-6, 1.3, -0.5);
-camera.lookAt(view === 'front' ? 0 : -1, 1, 0);
+camera.lookAt(view === 'front' ? 0 : view === 'close' ? -1.8 : -1, view === 'close' ? 1.1 : 1, 0);
 
 // Advance each Dave to the moment shown
 const v = new THREE.Vector3();

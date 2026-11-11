@@ -21,6 +21,8 @@ export interface ControlTarget {
   rerack(): void;
   /** Open or close the pause menu. */
   pause(): void;
+  /** Toggle fast forward while the ball is rolling. */
+  fastForward(): void;
 }
 
 const DRAG_DECIDE_PX = 12;
@@ -190,6 +192,9 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
         break;
       case 'r':
         if (first) game.rerack();
+        break;
+      case 'f':
+        if (first) game.fastForward();
         break;
       default:
         return;

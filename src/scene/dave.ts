@@ -146,7 +146,7 @@ export class Dave {
 
   constructor(suitColour = DAVE_COLOURS.suit) {
     const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true, ...extra });
+      new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...extra });
     const suit = flat(suitColour);
     this.suitMat = suit;
     const shoeMat = flat(DAVE_COLOURS.shoe, { roughness: 0.3 });
@@ -166,20 +166,29 @@ export class Dave {
     const makeLeg = (side: 1 | -1) => {
       const hip = new THREE.Group();
       hip.position.set(0.1 * side, 0, 0);
-      hip.add(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.46, 7), suit, -0.23));
+      hip.add(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.46, 18), suit, -0.23));
       const knee = new THREE.Group();
       knee.position.y = -0.46;
-      knee.add(mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.44, 7), suit, -0.22));
-      knee.add(mesh(new THREE.BoxGeometry(0.12, 0.07, 0.27), shoeMat, -0.46, 0, -0.05));
+      knee.add(mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.44, 18), suit, -0.22));
+      const shoe = mesh(new THREE.CapsuleGeometry(0.055, 0.17, 6, 14), shoeMat, -0.465, 0, -0.05);
+      shoe.rotation.x = Math.PI / 2;
+      shoe.scale.set(1.05, 1, 0.65);
+      knee.add(shoe);
+      // Rounded knee so the leg doesn't show a seam when it bends
+      knee.add(mesh(new THREE.SphereGeometry(0.074, 18, 14), suit, 0));
       hip.add(knee);
       this.hips.add(hip);
       return { hip, knee };
     };
     this.legs = { R: makeLeg(1), L: makeLeg(-1) };
+    // Pelvis fills the gap between the jacket and the legs
+    const pelvis = mesh(new THREE.CylinderGeometry(0.19, 0.17, 0.16, 20), suit, -0.04);
+    pelvis.scale.z = 0.72;
+    this.hips.add(pelvis);
 
     // Torso: jacket, shirt, tie, buttons
     this.hips.add(this.spine);
-    const jacket = mesh(new THREE.CylinderGeometry(0.22, 0.19, 0.6, 8), suit, 0.3);
+    const jacket = mesh(new THREE.CylinderGeometry(0.22, 0.19, 0.6, 20), suit, 0.3);
     jacket.scale.z = 0.72;
     this.spine.add(jacket);
     const vShape = new THREE.Shape();
@@ -206,22 +215,23 @@ export class Dave {
     this.bowTie.add(mesh(new THREE.BoxGeometry(0.022, 0.025, 0.025), bowMat, 0.575, 0, -0.165));
     this.bowTie.visible = false;
     this.spine.add(this.bowTie);
-    for (const y of [0.24, 0.13]) this.buttons.add(mesh(new THREE.SphereGeometry(0.014, 6, 4), flat('#d9c27a'), y, 0, -0.14));
+    for (const y of [0.24, 0.13]) this.buttons.add(mesh(new THREE.SphereGeometry(0.014, 10, 8), flat('#d9c27a'), y, 0, -0.14));
     this.spine.add(this.buttons);
     // Shoulders
-    for (const side of [1, -1]) this.spine.add(mesh(new THREE.SphereGeometry(0.075, 8, 6), suit, 0.55, 0.2 * side));
+    for (const side of [1, -1]) this.spine.add(mesh(new THREE.SphereGeometry(0.075, 18, 14), suit, 0.55, 0.2 * side));
 
     // Arms: upper arm, elbow, forearm, cuff, hand
     const makeArm = (side: 1 | -1) => {
       const shoulder = new THREE.Group();
       shoulder.position.set(0.25 * side, 0.55, 0);
       shoulder.rotation.order = 'ZXY';
-      shoulder.add(mesh(new THREE.CylinderGeometry(0.066, 0.06, 0.3, 7), suit, -0.15));
+      shoulder.add(mesh(new THREE.CylinderGeometry(0.066, 0.06, 0.3, 18), suit, -0.15));
       const elbow = new THREE.Group();
       elbow.position.y = -0.3;
-      elbow.add(mesh(new THREE.CylinderGeometry(0.058, 0.052, 0.26, 7), suit, -0.13));
-      elbow.add(mesh(new THREE.CylinderGeometry(0.054, 0.054, 0.035, 8), shirt, -0.265));
-      elbow.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), skin, -0.32));
+      elbow.add(mesh(new THREE.SphereGeometry(0.062, 16, 12), suit, 0));
+      elbow.add(mesh(new THREE.CylinderGeometry(0.058, 0.052, 0.26, 18), suit, -0.13));
+      elbow.add(mesh(new THREE.CylinderGeometry(0.054, 0.054, 0.035, 20), shirt, -0.265));
+      elbow.add(mesh(new THREE.SphereGeometry(0.055, 18, 14), skin, -0.32));
       shoulder.add(elbow);
       this.spine.add(shoulder);
       return { shoulder, elbow };
@@ -231,11 +241,11 @@ export class Dave {
     this.arms.R.elbow.add(this.handAnchor);
 
     // Neck (a green stalk) and the tomato head
-    this.spine.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 7), flat('#3f8f2a'), 0.63));
+    this.spine.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 18), flat('#3f8f2a'), 0.63));
     this.headPivot.position.y = 0.66;
     this.spine.add(this.headPivot);
     const R = 0.23;
-    const headGeo = new THREE.SphereGeometry(R, 24, 16);
+    const headGeo = new THREE.SphereGeometry(R, 48, 32);
     const pos = headGeo.attributes.position;
     const v = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
@@ -254,7 +264,7 @@ export class Dave {
     // Face: a patch on the front of the head showing the current expression
     this.faceMat = new THREE.MeshBasicMaterial({ map: this.faces.neutral, transparent: true, depthWrite: false });
     const facePatch = new THREE.Mesh(
-      new THREE.SphereGeometry(R * 1.005, 24, 16, Math.PI * 1.5 - 0.85, 1.7, 0.75, 1.35),
+      new THREE.SphereGeometry(R * 1.005, 48, 32, Math.PI * 1.5 - 0.85, 1.7, 0.75, 1.35),
       this.faceMat,
     );
     facePatch.position.y = R * 0.88;

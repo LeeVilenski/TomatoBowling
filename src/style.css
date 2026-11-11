@@ -400,3 +400,21 @@ html, body {
   animation: pop 0.3s cubic-bezier(0.3, 1.6, 0.6, 1);
 }
 .unlocks { margin: 10px 0 0; padding: 10px; border-radius: 12px; background: rgba(255, 210, 58, 0.15); font-size: 14px; }
+
+/* Fast forward (shown while the ball rolls) */
+#ff-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 44px);
+  height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 24px;
+  background: rgba(20, 10, 30, 0.75);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 6;
+}
+#ff-btn[aria-pressed="true"] { background: #e0261b; }
