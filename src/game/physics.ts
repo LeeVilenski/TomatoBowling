@@ -20,7 +20,14 @@ export const PHYSICS_DT = 1 / 120;
 const GUTTER_HALF = GUTTER_WIDTH / 2;
 const PIN_FOOT = 0.018; // half-width of the square foot (fits inside the round base)
 const PIN_FOOT_H = 0.004;
-const LANE_FRICTION = 0.12; // oiled wood: the ball skids before it rolls
+// Real lanes are oiled for the first ~12 m, so the ball skids there and then grips
+// the dry back end. That grip is what turns spin into a late hook.
+export const OIL_END_Z = -12.2;
+const OIL_FRICTION = 0.03;
+const DRY_FRICTION = 0.2;
+const APPROACH_FRICTION = 0.3;
+// Full spin = this many rad/s of side rotation (~160 rpm of axis rotation).
+const MAX_SPIN = 17;
 const PIN_FRICTION = 0.35;
 const PIN_RESTITUTION = 0.45;
 const BALL_RESTITUTION = 0.2;
@@ -32,6 +39,7 @@ export interface ThrowParams {
   x: number; // start position across the lane
   angle: number; // radians, positive aims right
   speed: number; // m/s
+  spin?: number; // -1 (hooks left) to 1 (hooks right)
 }
 
 export class BowlingPhysics {
@@ -79,7 +87,9 @@ export class BowlingPhysics {
     this.world.createCollider(
       RAPIER.ColliderDesc.ball(BALL_RADIUS)
         .setMass(BALL_MASS)
-        .setFriction(LANE_FRICTION)
+        // Multiply wins over the default rule, so ball-on-surface friction is just the surface's value
+        .setFriction(1)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
         .setRestitution(BALL_RESTITUTION),
       this.ball,
     );
@@ -112,9 +122,15 @@ export class BowlingPhysics {
 
   private buildLane() {
     const thick = 0.2;
-    // Approach + lane + pin deck: one surface from behind the foul line to the deck end.
-    const laneLen = APPROACH_START_Z - DECK_END_Z;
-    this.fixed(LANE_HALF, thick / 2, laneLen / 2, 0, -thick / 2, (APPROACH_START_Z + DECK_END_Z) / 2, LANE_FRICTION);
+    // Approach, oiled front section and dry back section + pin deck, end to end.
+    const sections: [number, number, number][] = [
+      [APPROACH_START_Z, 0, APPROACH_FRICTION],
+      [0, OIL_END_Z, OIL_FRICTION],
+      [OIL_END_Z, DECK_END_Z, DRY_FRICTION],
+    ];
+    for (const [from, to, friction] of sections) {
+      this.fixed(LANE_HALF, thick / 2, (from - to) / 2, 0, -thick / 2, (from + to) / 2, friction);
+    }
     // Approach is wider than the lane: fill in beside the gutters behind the foul line.
     for (const side of [-1, 1]) {
       this.fixed(GUTTER_HALF, thick / 2, APPROACH_START_Z / 2, side * (LANE_HALF + GUTTER_HALF), -thick / 2, APPROACH_START_Z / 2);
@@ -157,22 +173,60 @@ export class BowlingPhysics {
     this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
-  throwBall({ x, angle, speed }: ThrowParams) {
+  throwBall({ x, angle, speed, spin = 0 }: ThrowParams) {
     this.ball.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     this.ball.setTranslation({ x, y: BALL_RADIUS, z: -0.3 }, true);
-    this.ball.setLinvel({ x: Math.sin(angle) * speed, y: 0, z: -Math.cos(angle) * speed }, true);
-    this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    const dx = Math.sin(angle);
+    const dz = -Math.cos(angle);
+    this.ball.setLinvel({ x: dx * speed, y: 0, z: dz * speed }, true);
+    // Side spin = rotation around the direction of travel. Once the ball reaches the
+    // dry boards, friction turns it into sideways movement (positive spin hooks right).
+    const w = spin * MAX_SPIN;
+    this.ball.setAngvel({ x: dx * w, y: 0, z: dz * w }, true);
   }
 
+  /** Put every pin back on its spot, upright. */
   resetPins() {
-    this.pins.forEach((pin, i) => {
+    this.pins.forEach((_, i) => {
       const s = this.spots[i];
-      pin.setTranslation({ x: s.x, y: 0, z: s.z }, true);
-      pin.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
-      pin.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      pin.setAngvel({ x: 0, y: 0, z: 0 }, true);
-      pin.setEnabled(true);
+      this.placePin(i, s.x, 0, s.z);
     });
+  }
+
+  spot(i: number) {
+    return this.spots[i];
+  }
+
+  /** Teleport a pin upright to a position, as a normal physics pin. */
+  placePin(i: number, x: number, y: number, z: number) {
+    const pin = this.pins[i];
+    pin.setEnabled(true);
+    pin.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    pin.setTranslation({ x, y, z }, true);
+    pin.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+    pin.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    pin.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  /** Hold a pin in the pinsetter: it follows the given position and ignores gravity. */
+  holdPin(i: number, x: number, y: number, z: number) {
+    const pin = this.pins[i];
+    pin.setEnabled(true);
+    if (pin.bodyType() !== RAPIER.RigidBodyType.KinematicPositionBased) {
+      pin.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+      pin.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      pin.setTranslation({ x, y, z }, true);
+    }
+    pin.setNextKinematicTranslation({ x, y, z });
+  }
+
+  /** Take a pin off the lane entirely (swept away). */
+  removePin(i: number) {
+    this.pins[i].setEnabled(false);
+  }
+
+  isPinRemoved(i: number) {
+    return !this.pins[i].isEnabled();
   }
 
   step() {

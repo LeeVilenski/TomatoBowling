@@ -9,39 +9,30 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <canvas id="trail"></canvas>
 
     <div id="hud">
       <header>
         <h1>Tomato Dave's Ten-pin</h1>
-        <span class="tag">Stage 1 prototype</span>
+        <span class="tag">Stage 2 prototype</span>
       </header>
       <p id="status" aria-live="polite"></p>
       <p id="readout"></p>
     </div>
 
-    <div id="controls">
-      <div class="group">
-        <span class="label">Move</span>
-        <button data-action="left" data-repeat aria-label="Move left">◀</button>
-        <button data-action="right" data-repeat aria-label="Move right">▶</button>
-      </div>
-      <div class="group">
-        <span class="label">Aim</span>
-        <button data-action="aimL" data-repeat aria-label="Aim left">↖</button>
-        <button data-action="aimR" data-repeat aria-label="Aim right">↗</button>
-      </div>
-      <div class="group">
-        <span class="label">Speed</span>
-        <button data-action="slower" data-repeat aria-label="Slower">−</button>
-        <button data-action="faster" data-repeat aria-label="Faster">+</button>
-      </div>
-      <div class="group main">
-        <button data-action="throw" class="throw">Throw</button>
-        <button data-action="reset">Reset</button>
-      </div>
+    <div id="power" aria-hidden="true"><div id="power-fill"></div><span>Power</span></div>
+
+    <div id="spin" class="mouse-only">
+      <button id="spin-left" aria-label="Spin left">◀</button>
+      <span>Spin <b id="spin-value">none</b></span>
+      <button id="spin-right" aria-label="Spin right">▶</button>
     </div>
 
-    <p id="keys">Keys: ←/→ move · A/D aim · ↑/↓ speed · Space throw · R reset</p>
+    <p id="hint">
+      <span class="touch-only">Drag sideways to move · <b>Swipe up to throw</b> · Curve your swipe to spin</span>
+      <span class="mouse-only">Mouse: move · Wheel or A/D: aim · Q/E: spin · <b>Hold click or Space, release to throw</b> · R: new rack</span>
+    </p>
+
     <div id="loading">Loading the alley…</div>
 
     <script type="module" src="/src/main.ts"></script>

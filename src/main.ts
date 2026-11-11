@@ -1,21 +1,32 @@
 import * as THREE from 'three';
 import './style.css';
-import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF } from './game/dimensions';
+import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, OUTER_HALF } from './game/dimensions';
 import { BowlingPhysics, PHYSICS_DT } from './game/physics';
+import { Pinsetter, type PinsetterMode } from './game/pinsetter';
+import { attachControls, type ControlTarget } from './input/controls';
+import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
 import { createPinMesh, createTomatoBall } from './scene/models';
 
-type Phase = 'aiming' | 'rolling' | 'settling' | 'result';
+type Phase = 'aiming' | 'charging' | 'rolling' | 'settling' | 'result' | 'sweeping';
 
 const MAX_X = LANE_HALF - BALL_RADIUS - 0.03;
 const MAX_ANGLE = (4 * Math.PI) / 180;
 const MIN_SPEED = 5;
 const MAX_SPEED = 11;
+const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
+const RESULT_PAUSE = 2.2; // seconds before the pinsetter runs on its own
+
+const clamp = THREE.MathUtils.clamp;
+const $ = (id: string) => document.getElementById(id)!;
 
 async function start() {
-  const canvas = document.getElementById('game') as HTMLCanvasElement;
-  const status = document.getElementById('status')!;
-  const readout = document.getElementById('readout')!;
+  const canvas = $('game') as HTMLCanvasElement;
+  const status = $('status');
+  const readout = $('readout');
+  const powerMeter = $('power');
+  const powerFill = $('power-fill');
+  const spinValue = $('spin-value');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -37,105 +48,154 @@ async function start() {
   const ballMesh = createTomatoBall();
   scene.add(ballMesh);
 
-  // Aim guide: a dashed line from the ball down the lane
-  const aimGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
+  const sweepBar = new THREE.Mesh(
+    new THREE.BoxGeometry(OUTER_HALF * 2 + 0.1, 0.1, 0.04),
+    new THREE.MeshStandardMaterial({ color: '#2d2f36', metalness: 0.6, roughness: 0.4 }),
+  );
+  sweepBar.castShadow = true;
+  scene.add(sweepBar);
+  const pinsetter = new Pinsetter(physics, sweepBar);
+
+  // Aim guide: dashed line showing roughly where the ball will go, including the hook
+  const AIM_POINTS = 40;
+  const aimGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: AIM_POINTS }, () => new THREE.Vector3()));
   const aimLine = new THREE.Line(
     aimGeo,
-    new THREE.LineDashedMaterial({ color: '#ffe066', dashSize: 0.15, gapSize: 0.1, transparent: true, opacity: 0.85 }),
+    new THREE.LineDashedMaterial({ color: '#ffe066', dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.8 }),
   );
   scene.add(aimLine);
 
   // ---- Game state ----
   let phase: Phase = 'aiming';
   let aimX = 0;
-  let aimAngle = 0;
-  let speed = 8;
+  let aim = 0; // -1..1
+  let spin = 0; // -1..1 (keyboard / mouse spin setting)
+  let power = 0;
+  let chargeStart = 0;
   let settleTime = 0;
-  let lastResult = 0;
+  let resultTime = 0;
+  let ballInRack: 1 | 2 = 1;
+  let downBefore = 0;
+  let nextSetter: PinsetterMode = 'rerack';
+  let lastThrow = { speed: 0, spin: 0, knocked: 0 };
+
+  const setStatus = (text: string) => (status.textContent = text);
 
   function updateReadout() {
-    const deg = ((aimAngle * 180) / Math.PI).toFixed(1);
-    readout.textContent = `Position ${(aimX * 100).toFixed(0)} cm · Aim ${deg}° · Speed ${speed.toFixed(1)} m/s`;
+    const spinText = spin === 0 ? 'none' : `${spin < 0 ? '◀' : '▶'} ${Math.round(Math.abs(spin) * 100)}%`;
+    readout.textContent = `Ball ${ballInRack} · Spin ${spinText}`;
+    spinValue.textContent = spinText;
   }
 
-  function setStatus(text: string) {
-    status.textContent = text;
+  function showPower(p: number, visible: boolean) {
+    powerMeter.classList.toggle('visible', visible);
+    powerFill.style.transform = `scaleY(${p})`;
   }
 
-  function nudge(dx: number, dAngle: number, dSpeed: number) {
-    if (phase !== 'aiming') return;
-    aimX = THREE.MathUtils.clamp(aimX + dx, -MAX_X, MAX_X);
-    aimAngle = THREE.MathUtils.clamp(aimAngle + dAngle, -MAX_ANGLE, MAX_ANGLE);
-    speed = THREE.MathUtils.clamp(speed + dSpeed, MIN_SPEED, MAX_SPEED);
-    physics.holdBall(aimX);
-    updateReadout();
-  }
-
-  function throwBall() {
-    if (phase !== 'aiming') return;
-    physics.throwBall({ x: aimX, angle: aimAngle, speed });
+  function launch(p: number, aimValue: number, spinValue: number) {
+    const speed = MIN_SPEED + p * (MAX_SPEED - MIN_SPEED);
+    downBefore = physics.pinsDown();
+    physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
+    lastThrow = { speed, spin: spinValue, knocked: 0 };
     phase = 'rolling';
     settleTime = 0;
-    setStatus('Rolling…');
+    setStatus(`Rolling… ${speed.toFixed(1)} m/s`);
   }
 
-  function reset() {
-    physics.resetPins();
-    physics.holdBall(aimX);
-    phase = 'aiming';
-    setStatus('Line up and throw!');
-  }
-
-  // ---- Input ----
-  const keys: Record<string, () => void> = {
-    ArrowLeft: () => nudge(-0.02, 0, 0),
-    ArrowRight: () => nudge(0.02, 0, 0),
-    a: () => nudge(0, -0.25 * (Math.PI / 180), 0),
-    d: () => nudge(0, 0.25 * (Math.PI / 180), 0),
-    ArrowUp: () => nudge(0, 0, 0.5),
-    ArrowDown: () => nudge(0, 0, -0.5),
-    w: () => nudge(0, 0, 0.5),
-    s: () => nudge(0, 0, -0.5),
-    ' ': () => (phase === 'result' ? reset() : throwBall()),
-    Enter: () => (phase === 'result' ? reset() : throwBall()),
-    r: () => reset(),
-  };
-  window.addEventListener('keydown', (e) => {
-    const fn = keys[e.key.length === 1 ? e.key.toLowerCase() : e.key];
-    if (fn) {
-      e.preventDefault();
-      fn();
+  function finishThrow() {
+    const totalDown = physics.pinsDown();
+    const knocked = totalDown - downBefore;
+    lastThrow.knocked = knocked;
+    let msg: string;
+    if (ballInRack === 1) {
+      if (knocked === 10) {
+        msg = 'STRIKE! 🍅';
+        nextSetter = 'rerack';
+      } else {
+        msg = knocked === 0 ? 'Gutter… saucy.' : `${knocked} pin${knocked === 1 ? '' : 's'}`;
+        nextSetter = 'clear';
+      }
+    } else {
+      msg = totalDown === 10 ? 'Spare! 🍅' : `${knocked} more — ${totalDown} total`;
+      nextSetter = 'rerack';
     }
-  });
+    phase = 'result';
+    resultTime = 0;
+    setStatus(msg);
+  }
 
-  // On-screen buttons (hold to repeat)
-  const actions: Record<string, () => void> = {
-    left: keys.ArrowLeft,
-    right: keys.ArrowRight,
-    aimL: keys.a,
-    aimR: keys.d,
-    faster: keys.ArrowUp,
-    slower: keys.ArrowDown,
-    throw: keys[' '],
-    reset: keys.r,
-  };
-  document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
-    const fn = actions[btn.dataset.action!];
-    const repeats = btn.dataset.repeat !== undefined;
-    let timer: number | undefined;
-    const stop = () => {
-      clearInterval(timer);
-      timer = undefined;
-    };
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      fn();
-      if (repeats) timer = window.setInterval(fn, 90);
+  function runPinsetter(mode: PinsetterMode) {
+    phase = 'sweeping';
+    physics.holdBall(aimX);
+    setStatus(mode === 'clear' ? 'Clearing the deadwood…' : 'Setting a fresh rack…');
+    pinsetter.start(mode, () => {
+      ballInRack = mode === 'clear' ? 2 : 1;
+      phase = 'aiming';
+      setStatus(ballInRack === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
+      updateReadout();
     });
-    btn.addEventListener('pointerup', stop);
-    btn.addEventListener('pointerleave', stop);
-    btn.addEventListener('pointercancel', stop);
-  });
+  }
+
+  const controls: ControlTarget = {
+    canAim: () => phase === 'aiming' || phase === 'charging',
+    isCharging: () => phase === 'charging',
+    moveBy(delta) {
+      if (phase !== 'aiming') return;
+      aimX = clamp(aimX + delta * MAX_X, -MAX_X, MAX_X);
+      physics.holdBall(aimX);
+    },
+    setPosition(v) {
+      if (phase !== 'aiming') return;
+      aimX = clamp(v, -1, 1) * MAX_X;
+      physics.holdBall(aimX);
+    },
+    nudgeAim(delta) {
+      if (phase !== 'aiming' && phase !== 'charging') return;
+      aim = clamp(aim + delta, -1, 1);
+    },
+    nudgeSpin(delta) {
+      if (phase !== 'aiming' && phase !== 'charging') return;
+      spin = clamp(Math.round((spin + delta) * 10) / 10, -1, 1);
+      updateReadout();
+    },
+    startCharge() {
+      if (phase !== 'aiming') return;
+      phase = 'charging';
+      chargeStart = performance.now();
+      power = 0;
+      setStatus('Release to throw!');
+    },
+    releaseCharge() {
+      if (phase !== 'charging') return;
+      const held = (performance.now() - chargeStart) / 1000;
+      power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
+      showPower(power, false);
+      launch(power, aim, spin);
+    },
+    cancelCharge() {
+      if (phase !== 'charging') return;
+      phase = 'aiming';
+      showPower(0, false);
+      setStatus('Line up and throw!');
+    },
+    swipeThrow(t: SwipeThrow) {
+      if (phase !== 'aiming') return;
+      showPower(t.power, true);
+      setTimeout(() => showPower(t.power, false), 700);
+      launch(t.power, t.aim, t.spin);
+    },
+    advance() {
+      if (phase === 'result') runPinsetter(nextSetter);
+    },
+    rerack() {
+      if (phase === 'aiming' || phase === 'result') runPinsetter('rerack');
+    },
+  };
+  const input = attachControls(canvas, $('trail') as HTMLCanvasElement, controls);
+
+  // On-screen spin buttons (mouse users; touch players curve their swipe instead)
+  $('spin-left').addEventListener('click', () => controls.nudgeSpin(-0.1));
+  $('spin-right').addEventListener('click', () => controls.nudgeSpin(0.1));
 
   // ---- Resize ----
   function resize() {
@@ -158,9 +218,9 @@ async function start() {
 
   function updateCamera(dt: number) {
     const b = physics.ball.translation();
-    if (phase === 'aiming') {
+    if (phase === 'aiming' || phase === 'charging') {
       if (camera.aspect < 0.8) {
-        // Portrait: sit higher and further back so the ball clears the on-screen buttons
+        // Portrait: sit higher and further back so the ball clears the bottom of the screen
         wantPos.set(aimX + 0.25, 1.9, 3.0);
         wantLook.set(aimX * 0.3, 0, -11);
       } else {
@@ -169,7 +229,7 @@ async function start() {
       }
     } else if (phase === 'rolling') {
       const z = Math.max(b.z + 3.2, HEAD_PIN_Z + 4.2);
-      wantPos.set(b.x * 0.5, THREE.MathUtils.lerp(0.75, 1.4, THREE.MathUtils.clamp(z / 2, 0, 1)), z);
+      wantPos.set(b.x * 0.5, THREE.MathUtils.lerp(0.75, 1.4, clamp(z / 2, 0, 1)), z);
       wantLook.set(b.x * 0.5, 0.1, Math.max(b.z - 6, HEAD_PIN_Z - 0.4));
     } else {
       wantPos.set(0, 0.85, HEAD_PIN_Z + 3.6);
@@ -182,14 +242,31 @@ async function start() {
     camera.lookAt(camLook);
   }
 
-  // ---- Main loop (fixed physics step) ----
-  let acc = 0;
-  let last = performance.now();
+  // ---- Per-frame updates ----
+  const tmp = new THREE.Vector3();
+  function updateAimLine() {
+    aimLine.visible = phase === 'aiming' || phase === 'charging';
+    if (!aimLine.visible) return;
+    const p = physics.ball.translation();
+    const angle = aim * MAX_ANGLE;
+    const length = -HEAD_PIN_Z;
+    const pos = aimGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < AIM_POINTS; i++) {
+      const d = (i / (AIM_POINTS - 1)) * length;
+      // Rough hook preview at a medium throw: almost nothing in the oil, then it bends late
+      const hook = spin * 0.37 * Math.pow(d / length, 3);
+      tmp.set(p.x + Math.sin(angle) * d + hook, 0.005, p.z - BALL_RADIUS - Math.cos(angle) * d);
+      pos.setXYZ(i, tmp.x, tmp.y, tmp.z);
+    }
+    pos.needsUpdate = true;
+    aimLine.computeLineDistances();
+  }
 
   function syncMeshes() {
     physics.pins.forEach((pin, i) => {
       const p = pin.translation();
       const q = pin.rotation();
+      pinMeshes[i].visible = !physics.isPinRemoved(i);
       pinMeshes[i].position.set(p.x, p.y, p.z);
       pinMeshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
@@ -197,20 +274,15 @@ async function start() {
     const q = physics.ball.rotation();
     ballMesh.position.set(p.x, p.y, p.z);
     ballMesh.quaternion.set(q.x, q.y, q.z, q.w);
-
-    aimLine.visible = phase === 'aiming';
-    if (aimLine.visible) {
-      const len = 5;
-      aimGeo.setFromPoints([
-        new THREE.Vector3(p.x, 0.005, p.z - BALL_RADIUS),
-        new THREE.Vector3(p.x + Math.sin(aimAngle) * len, 0.005, p.z - Math.cos(aimAngle) * len),
-      ]);
-      aimLine.computeLineDistances();
-    }
   }
 
   function updatePhase(dt: number) {
-    if (phase === 'rolling') {
+    if (phase === 'charging') {
+      // Uses the real clock so the meter moves at the same pace on slow devices
+      const held = (performance.now() - chargeStart) / 1000;
+      power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
+      showPower(power, true);
+    } else if (phase === 'rolling') {
       const b = physics.ball.translation();
       const v = physics.ball.linvel();
       const stalled = Math.hypot(v.x, v.z) < 0.2;
@@ -220,21 +292,23 @@ async function start() {
       }
     } else if (phase === 'settling') {
       settleTime += dt;
-      if ((settleTime > 2 && physics.isSettled()) || settleTime > 6) {
-        lastResult = physics.pinsDown();
-        phase = 'result';
-        const word = lastResult === 10 ? 'STRIKE! 🍅' : lastResult === 0 ? 'Gutter… saucy.' : `${lastResult} pin${lastResult === 1 ? '' : 's'}`;
-        setStatus(`${word} — tap Reset / press Space to go again`);
-      }
+      if ((settleTime > 2 && physics.isSettled()) || settleTime > 6) finishThrow();
+    } else if (phase === 'result') {
+      resultTime += dt;
+      if (resultTime > RESULT_PAUSE) runPinsetter(nextSetter);
     }
   }
 
+  // ---- Main loop (fixed physics step) ----
+  let acc = 0;
+  let last = performance.now();
   function frame(now: number) {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
     acc += dt;
     let steps = 0;
     while (acc >= PHYSICS_DT && steps < 12) {
+      pinsetter.update(PHYSICS_DT);
       physics.step();
       acc -= PHYSICS_DT;
       steps++;
@@ -243,7 +317,9 @@ async function start() {
 
     updatePhase(dt);
     syncMeshes();
+    updateAimLine();
     updateCamera(dt);
+    input.update(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
@@ -251,26 +327,27 @@ async function start() {
   // Small hook for automated testing in the browser console
   (window as unknown as { __game: unknown }).__game = {
     physics,
-    throwBall: (x = 0, angleDeg = 0, s = 8) => {
+    controls,
+    throwBall: (x = 0, aimValue = 0, p = 0.5, s = 0) => {
       aimX = x;
-      aimAngle = (angleDeg * Math.PI) / 180;
-      speed = s;
       physics.holdBall(aimX);
-      throwBall();
+      launch(p, aimValue, s);
     },
-    reset,
     get phase() {
       return phase;
     },
-    get result() {
-      return lastResult;
+    get ballInRack() {
+      return ballInRack;
+    },
+    get lastThrow() {
+      return lastThrow;
     },
   };
 
   updateReadout();
   physics.holdBall(aimX);
   setStatus('Line up and throw!');
-  document.getElementById('loading')?.remove();
+  $('loading').remove();
   requestAnimationFrame(frame);
 }
 
