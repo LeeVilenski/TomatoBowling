@@ -24,9 +24,6 @@ npm run check:physics  # simulate test throws without a browser
 
 Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view).
 
-```bash
-```
-
 ## Controls
 
 **Touch screens**
