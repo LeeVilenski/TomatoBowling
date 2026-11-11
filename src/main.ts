@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import './style.css';
 import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, OUTER_HALF } from './game/dimensions';
 import { BowlingPhysics, PHYSICS_DT } from './game/physics';
+import { Match, type RollOutcome } from './game/match';
 import { Pinsetter, type PinsetterMode } from './game/pinsetter';
+import { mark } from './game/scoring';
+import { storage } from './save/storage';
+import { renderScorecard } from './ui/scorecard';
 import { attachControls, type ControlTarget } from './input/controls';
 import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
@@ -24,6 +28,7 @@ const RESULT_PAUSE = 2.2; // seconds before the pinsetter runs on its own
 
 const clamp = THREE.MathUtils.clamp;
 const $ = (id: string) => document.getElementById(id)!;
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 async function start() {
   const canvas = $('game') as HTMLCanvasElement;
@@ -32,6 +37,7 @@ async function start() {
   const powerMeter = $('power');
   const powerFill = $('power-fill');
   const spinValue = $('spin-value');
+  const scorecardEl = $('scorecard');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -70,7 +76,7 @@ async function start() {
   );
   scene.add(aimLine);
 
-  // ---- Game state ----
+  // ---- Throw state ----
   let phase: Phase = 'aiming';
   let aimX = 0;
   let aim = 0; // -1..1
@@ -79,18 +85,34 @@ async function start() {
   let chargeStart = 0;
   let settleTime = 0;
   let resultTime = 0;
-  let ballInRack: 1 | 2 = 1;
   let downBefore = 0;
-  let nextSetter: PinsetterMode = 'rerack';
   let lastThrow = { speed: 0, spin: 0, knocked: 0 };
 
-  const setStatus = (text: string) => (status.textContent = text);
+  // ---- Game mode state ----
+  type Mode = 'single' | 'pass' | 'practice';
+  let mode: Mode = 'single';
+  let match: Match | null = null;
+  let outcome: RollOutcome | null = null;
+  let practiceBall: 1 | 2 = 1;
+  let practiceRack: number[] | null = null; // a spare setup being practised, or null for full racks
+  let nextSetter: PinsetterMode = 'rerack';
+  let openScreen: string | null = null;
 
+  const setStatus = (text: string) => (status.textContent = text);
   const spinLabel = (v: number) => (Math.abs(v) < 0.005 ? 'none' : `${v < 0 ? '◀' : '▶'} ${Math.round(Math.abs(v) * 100)}%`);
 
   /** `thrownSpin` shows the spin of a swipe throw instead of the keyboard/mouse setting. */
   function updateReadout(thrownSpin?: number) {
-    readout.textContent = `Ball ${ballInRack} · Spin ${spinLabel(thrownSpin ?? spin)}`;
+    let where: string;
+    if (mode === 'practice') {
+      where = practiceRack ? 'Spare practice' : `Practice · Ball ${practiceBall}`;
+    } else if (match) {
+      const pos = match.position;
+      where = `${match.players.length > 1 ? match.player.name + ' · ' : ''}Frame ${Math.min(pos.frame + 1, 10)} · Ball ${pos.ball + 1}`;
+    } else {
+      where = '';
+    }
+    readout.textContent = `${where} · Spin ${spinLabel(thrownSpin ?? spin)}`;
     spinValue.textContent = spinLabel(spin);
   }
 
@@ -110,38 +132,164 @@ async function start() {
     updateReadout(spinValue);
   }
 
+  function resultMessage(m: string, knocked: number, firstBall: boolean) {
+    if (m === 'X') return 'STRIKE! 🍅';
+    if (m === '/') return 'Spare! 🍅';
+    if (m === '-') return firstBall ? 'Gutter… saucy.' : 'Missed!';
+    return `${knocked} pin${knocked === 1 ? '' : 's'}`;
+  }
+
   function finishThrow() {
     const totalDown = physics.pinsDown();
     const knocked = totalDown - downBefore;
+    const standingBefore = 10 - downBefore;
     lastThrow.knocked = knocked;
-    let msg: string;
-    if (ballInRack === 1) {
-      if (knocked === 10) {
-        msg = 'STRIKE! 🍅';
-        nextSetter = 'rerack';
-      } else {
-        msg = knocked === 0 ? 'Gutter… saucy.' : `${knocked} pin${knocked === 1 ? '' : 's'}`;
-        nextSetter = 'clear';
-      }
-    } else {
-      msg = totalDown === 10 ? 'Spare! 🍅' : `${knocked} more — ${totalDown} total`;
-      nextSetter = 'rerack';
-    }
     phase = 'result';
     resultTime = 0;
-    setStatus(msg);
+
+    if (mode === 'practice') {
+      if (practiceRack) {
+        setStatus(knocked === standingBefore ? 'Picked it up! 🍅' : `Missed — ${standingBefore - knocked} left`);
+        nextSetter = 'rerack';
+      } else if (practiceBall === 1) {
+        setStatus(resultMessage(mark(knocked, 10, true), knocked, true));
+        nextSetter = knocked === 10 ? 'rerack' : 'clear';
+      } else {
+        setStatus(resultMessage(mark(knocked, standingBefore, false), knocked, false));
+        nextSetter = 'rerack';
+      }
+      return;
+    }
+
+    if (!match) return;
+    const firstBall = match.position.ball === 0;
+    outcome = match.recordRoll(knocked);
+    renderScorecard(scorecardEl, match);
+    setStatus(resultMessage(outcome.mark, knocked, firstBall));
+    nextSetter = outcome.freshRack ? 'rerack' : 'clear';
   }
 
-  function runPinsetter(mode: PinsetterMode) {
+  function runPinsetter(setterMode: PinsetterMode) {
     phase = 'sweeping';
     physics.holdBall(aimX);
-    setStatus(mode === 'clear' ? 'Clearing the deadwood…' : 'Setting a fresh rack…');
-    pinsetter.start(mode, () => {
-      ballInRack = mode === 'clear' ? 2 : 1;
-      aim = 0; // each ball starts aimed straight down the lane
-      phase = 'aiming';
-      setStatus(ballInRack === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
+    setStatus(setterMode === 'clear' ? 'Clearing the deadwood…' : 'Setting the pins…');
+    const rack = setterMode === 'rerack' && mode === 'practice' && practiceRack ? practiceRack : undefined;
+    pinsetter.start(setterMode, () => afterPinsetter(setterMode), rack);
+  }
+
+  /** What happens once the pins are set: next ball, next player, or the end of the game. */
+  function afterPinsetter(setterMode: PinsetterMode) {
+    aim = 0; // each ball starts aimed straight down the lane
+    phase = 'aiming';
+    if (mode === 'practice') {
+      practiceBall = setterMode === 'clear' ? 2 : 1;
+      setStatus(practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
       updateReadout();
+      return;
+    }
+    if (!match) return;
+    const done = outcome;
+    outcome = null;
+    if (done?.gameOver) {
+      showGameOver();
+      return;
+    }
+    if (done?.playerChanged && mode === 'pass') {
+      $('pass-name').textContent = match.player.name;
+      $('pass-score').textContent = `Score so far: ${match.totals()[match.current]}`;
+      showScreen('pass');
+    }
+    setTurnStatus();
+  }
+
+  function setTurnStatus() {
+    if (!match) return;
+    const pos = match.position;
+    const who = mode === 'pass' ? `${match.player.name}, ` : '';
+    if (pos.frame === 9 && pos.ball === 2) setStatus(`${who}bonus ball!`);
+    else if (pos.ball === 0) setStatus(pos.frame === 9 ? `${who}final frame!` : `${who}line up and throw!`);
+    else setStatus(pos.standing === 10 ? `${who}bonus ball!` : `${who}pick up the spare!`);
+    updateReadout();
+    renderScorecard(scorecardEl, match);
+  }
+
+  // ---- Screens ----
+  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover'];
+  function showScreen(id: string | null) {
+    openScreen = id;
+    for (const s of screens) ($(s) as HTMLElement).hidden = s !== id;
+    const inGame = id === null || id === 'pass' || id === 'pause';
+    $('hud').hidden = !inGame;
+    $('pause-btn').hidden = id !== null;
+    $('hint').hidden = id !== null;
+    $('spin').hidden = id !== null;
+    $('practice-panel').hidden = !(id === null && mode === 'practice');
+    if (id === 'menu') {
+      const best = storage.bestScore();
+      $('menu-best').textContent = best > 0 ? `Your best: ${best}` : '';
+    }
+  }
+
+  /** Clears the lane and starts a new game in the chosen mode. */
+  function startGame(newMode: Mode, names: string[] = ['You']) {
+    mode = newMode;
+    match = newMode === 'practice' ? null : new Match(names);
+    outcome = null;
+    practiceBall = 1;
+    practiceRack = null;
+    spin = 0;
+    aim = 0;
+    aimX = 0;
+    physics.resetPins();
+    physics.holdBall(aimX);
+    pinsetter.cancel();
+    phase = 'aiming';
+    renderScorecard(scorecardEl, match);
+    updatePracticeButtons();
+    showScreen(null);
+    if (match) setTurnStatus();
+    else {
+      setStatus('Practice: throw as much as you like');
+      updateReadout();
+    }
+  }
+
+  function showGameOver() {
+    if (!match) return;
+    const totals = match.totals();
+    const body = $('go-body');
+    if (match.players.length === 1) {
+      const score = totals[0];
+      const best = storage.bestScore();
+      const isBest = storage.submitScore(score);
+      $('go-title').textContent = score === 300 ? 'PERFECT GAME!' : 'Game over';
+      body.innerHTML = `<div class="big-score">${score}</div><p class="small">${
+        isBest ? (best > 0 ? '🍅 New personal best!' : '🍅 First game in the books!') : `Your best: ${best}`
+      }</p>`;
+    } else {
+      const leaders = match.leaders();
+      const order = match.players.map((p, i) => ({ name: p.name, score: totals[i], i })).sort((a, b) => b.score - a.score);
+      $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
+      body.innerHTML = `<ul class="results">${order
+        .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
+        .join('')}</ul>`;
+    }
+    showScreen('gameover');
+  }
+
+  // Practice spare setups
+  const practiceButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#practice-panel [data-rack]'));
+  function updatePracticeButtons() {
+    const key = practiceRack ? practiceRack.join(',') : '';
+    for (const b of practiceButtons) b.classList.toggle('on', b.dataset.rack === key);
+  }
+  for (const b of practiceButtons) {
+    b.addEventListener('click', () => {
+      if (phase !== 'aiming' && phase !== 'result') return;
+      practiceRack = b.dataset.rack ? b.dataset.rack.split(',').map(Number) : null;
+      practiceBall = 1;
+      updatePracticeButtons();
+      runPinsetter('rerack');
     });
   }
 
@@ -166,7 +314,7 @@ async function start() {
   }
 
   const controls: ControlTarget = {
-    canAim: () => phase === 'aiming' || phase === 'charging',
+    canAim: () => openScreen === null && (phase === 'aiming' || phase === 'charging'),
     isCharging: () => phase === 'charging',
     moveBy(delta) {
       if (phase !== 'aiming') return;
@@ -215,13 +363,19 @@ async function start() {
       launch(t.power, aim, t.spin);
     },
     swipePreview(direction) {
-      if (phase === 'aiming') aim = swipeDirectionToAim(direction);
+      if (openScreen === null && phase === 'aiming') aim = swipeDirectionToAim(direction);
     },
     advance() {
-      if (phase === 'result') runPinsetter(nextSetter);
+      if (openScreen === 'pass') showScreen(null);
+      else if (openScreen === null && phase === 'result') runPinsetter(nextSetter);
     },
     rerack() {
-      if (phase === 'aiming' || phase === 'result') runPinsetter('rerack');
+      // Only in practice: in a real game the pinsetter follows the rules
+      if (mode === 'practice' && openScreen === null && (phase === 'aiming' || phase === 'result')) runPinsetter('rerack');
+    },
+    pause() {
+      if (openScreen === null && phase !== 'charging') showScreen('pause');
+      else if (openScreen === 'pause') showScreen(null);
     },
   };
   const input = attachControls(canvas, $('trail') as HTMLCanvasElement, controls);
@@ -229,6 +383,63 @@ async function start() {
   // On-screen spin buttons (mouse users; touch players curve their swipe instead)
   $('spin-left').addEventListener('click', () => controls.nudgeSpin(-0.1));
   $('spin-right').addEventListener('click', () => controls.nudgeSpin(0.1));
+
+  // ---- Screen buttons ----
+  document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const go = b.dataset.go!;
+      if (go === 'single') startGame('single');
+      else if (go === 'practice') startGame('practice');
+      else if (go === 'setup') openSetup();
+      else if (go === 'menu') showScreen('menu');
+    }),
+  );
+  $('pause-btn').addEventListener('click', () => controls.pause());
+  $('resume').addEventListener('click', () => showScreen(null));
+  $('restart').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
+  $('play-again').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
+  $('pass-ready').addEventListener('click', () => showScreen(null));
+
+  // Pass & Play setup: 2–4 named players
+  const playerList = $('player-list');
+  function renderPlayers(names: string[]) {
+    playerList.innerHTML = '';
+    names.forEach((name, i) => {
+      const row = document.createElement('div');
+      row.className = 'player-input';
+      const input = document.createElement('input');
+      input.value = name;
+      input.maxLength = 12;
+      input.placeholder = `Player ${i + 1}`;
+      input.setAttribute('aria-label', `Player ${i + 1} name`);
+      row.append(input);
+      if (names.length > 2) {
+        const remove = document.createElement('button');
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `Remove player ${i + 1}`);
+        remove.addEventListener('click', () => renderPlayers(currentNames().filter((_, j) => j !== i)));
+        row.append(remove);
+      }
+      playerList.append(row);
+    });
+    ($('add-player') as HTMLButtonElement).hidden = names.length >= 4;
+  }
+  const currentNames = () =>
+    Array.from(playerList.querySelectorAll('input')).map((inp, i) => inp.value.trim().slice(0, 12) || `Player ${i + 1}`);
+  function openSetup() {
+    const saved = storage.playerNames();
+    renderPlayers(saved.length >= 2 && saved.length <= 4 ? saved : ['Player 1', 'Player 2']);
+    showScreen('setup');
+  }
+  $('add-player').addEventListener('click', () => {
+    const names = currentNames();
+    if (names.length < 4) renderPlayers([...names, `Player ${names.length + 1}`]);
+  });
+  $('start-pass').addEventListener('click', () => {
+    const names = currentNames();
+    storage.savePlayerNames(names);
+    startGame('pass', names);
+  });
 
   // ---- Resize ----
   function resize() {
@@ -326,7 +537,7 @@ async function start() {
     } else if (phase === 'settling') {
       settleTime += dt;
       if ((settleTime > 2 && physics.isSettled()) || settleTime > 6) finishThrow();
-    } else if (phase === 'result') {
+    } else if (phase === 'result' && openScreen === null) {
       resultTime += dt;
       if (resultTime > RESULT_PAUSE) runPinsetter(nextSetter);
     }
@@ -369,17 +580,23 @@ async function start() {
     get phase() {
       return phase;
     },
-    get ballInRack() {
-      return ballInRack;
+    get mode() {
+      return mode;
     },
+    get match() {
+      return match;
+    },
+    get screen() {
+      return openScreen;
+    },
+    startGame,
     get lastThrow() {
       return lastThrow;
     },
   };
 
-  updateReadout();
   physics.holdBall(aimX);
-  setStatus('Line up and throw!');
+  showScreen('menu');
   $('loading').remove();
   requestAnimationFrame(frame);
 }

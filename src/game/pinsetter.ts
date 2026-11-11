@@ -38,8 +38,12 @@ export class Pinsetter {
     sweep.visible = false;
   }
 
-  start(mode: PinsetterMode, onDone: () => void) {
+  /** Pin numbers (1–10) to set when re-racking; all 10 if not given. Used for practice spares. */
+  private rack: number[] = [];
+
+  start(mode: PinsetterMode, onDone: () => void, rack: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     this.mode = mode;
+    this.rack = rack.map((n) => n - 1);
     this.time = 0;
     this.swept = false;
     this.active = true;
@@ -54,6 +58,13 @@ export class Pinsetter {
       }
     }
     this.sweep.visible = true;
+  }
+
+  /** Stop mid-cycle (e.g. quitting a game). The caller resets the pins afterwards. */
+  cancel() {
+    this.active = false;
+    this.onDone = null;
+    this.sweep.visible = false;
   }
 
   /** Call once per physics step while active. */
@@ -87,7 +98,7 @@ export class Pinsetter {
     } else if (t >= SWEEP_END) {
       // New rack lowers onto the spots
       const h = LIFT_HEIGHT * (1 - progress(t, SWEEP_END, LOWER_END));
-      for (let i = 0; i < this.physics.pins.length; i++) {
+      for (const i of this.rack) {
         const s = this.physics.spot(i);
         this.physics.holdPin(i, s.x, h, s.z);
       }
@@ -98,6 +109,7 @@ export class Pinsetter {
         for (const p of this.held) this.physics.placePin(p.i, p.x, 0, p.z);
       } else {
         this.physics.resetPins();
+        for (let i = 0; i < this.physics.pins.length; i++) if (!this.rack.includes(i)) this.physics.removePin(i);
       }
       this.active = false;
       this.sweep.visible = false;

@@ -19,6 +19,8 @@ export interface ControlTarget {
   /** Skip the wait after a throw. */
   advance(): void;
   rerack(): void;
+  /** Open or close the pause menu. */
+  pause(): void;
 }
 
 const DRAG_DECIDE_PX = 12;
@@ -179,7 +181,9 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
         }
         break;
       case 'Escape':
-        game.cancelCharge();
+      case 'p':
+        if (game.isCharging()) game.cancelCharge();
+        else if (first) game.pause();
         break;
       case 'r':
         if (first) game.rerack();
