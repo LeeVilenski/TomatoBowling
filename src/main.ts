@@ -16,6 +16,7 @@ import { buildDecor } from './scene/decor';
 import { Juice } from './scene/juice';
 import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
+import { Sound } from './audio/sound';
 
 type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'sweeping';
 
@@ -73,6 +74,11 @@ async function start() {
   scene.add(dave.root);
   const juice = new Juice(scene);
   const speech = new SpeechBubble($('speech'));
+  const sound = new Sound();
+  // Browsers only allow audio after the player interacts with the page
+  const unlockAudio = () => sound.unlock();
+  window.addEventListener('pointerdown', unlockAudio, true);
+  window.addEventListener('keydown', unlockAudio, true);
 
   const sweepBar = new THREE.Mesh(
     new THREE.BoxGeometry(OUTER_HALF * 2 + 0.1, 0.1, 0.04),
@@ -106,6 +112,7 @@ async function start() {
   let reactionShown = false;
   const splashed = new Set<number>();
   let releaseBlend = 0; // eases the ball from Dave's hand down onto the lane
+  let inGutter = false;
   const releaseFrom = new THREE.Vector3();
 
   // ---- Game mode state ----
@@ -147,6 +154,8 @@ async function start() {
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
     splashed.clear();
+    sound.release();
+    inGutter = false;
     releaseFrom.copy(ballMesh.position);
     releaseBlend = 1;
     phase = 'rolling';
@@ -172,6 +181,10 @@ async function start() {
     reactionShown = false;
     const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
+    if (reaction === 'strike') sound.cheer();
+    else if (reaction === 'spare') sound.applause(1.6, 0.8);
+    else if (reaction === 'good') sound.applause(1, 0.45);
+    else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
     if (reaction === 'strike') {
       // Extra-juicy strike
       juice.splash(new THREE.Vector3(0, 0.25, HEAD_PIN_Z - 0.35), 1.5, new THREE.Vector3(0, 0, -1));
@@ -203,6 +216,7 @@ async function start() {
     phase = 'sweeping';
     dave.idle();
     speech.hide();
+    sound.pinsetter();
     physics.holdBall(aimX);
     setStatus(setterMode === 'clear' ? 'Clearing the deadwood…' : 'Setting the pins…');
     const rack = setterMode === 'rerack' && mode === 'practice' && practiceRack ? practiceRack : undefined;
@@ -250,6 +264,7 @@ async function start() {
   const screens = ['menu', 'setup', 'pass', 'pause', 'gameover'];
   function showScreen(id: string | null) {
     openScreen = id;
+    sound.setMusicMood(id === null || id === 'pass' ? 'game' : 'menu');
     for (const s of screens) ($(s) as HTMLElement).hidden = s !== id;
     const inGame = id === null || id === 'pass' || id === 'pause';
     $('hud').hidden = !inGame;
@@ -430,6 +445,29 @@ async function start() {
   $('spin-left').addEventListener('click', () => controls.nudgeSpin(-0.1));
   $('spin-right').addEventListener('click', () => controls.nudgeSpin(0.1));
 
+  // ---- Music / sound toggles (menu and pause screens) ----
+  const toggleButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-toggle]'));
+  function refreshToggles() {
+    for (const b of toggleButtons) {
+      const on = b.dataset.toggle === 'music' ? sound.musicOn : sound.sfxOn;
+      b.setAttribute('aria-pressed', String(on));
+      b.querySelector('b')!.textContent = on ? 'On' : 'Off';
+    }
+  }
+  for (const b of toggleButtons) {
+    b.addEventListener('click', () => {
+      sound.unlock();
+      if (b.dataset.toggle === 'music') sound.toggleMusic();
+      else sound.toggleSfx();
+      refreshToggles();
+    });
+  }
+  refreshToggles();
+  // A soft click for every menu button
+  document.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.card button, #practice-panel button, #spin button, #pause-btn')) sound.click();
+  });
+
   // ---- Screen buttons ----
   document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -592,6 +630,32 @@ async function start() {
     }
   }
 
+  // ---- Sound from the physics: rolling, gutter, and pins clattering ----
+  const prevPinVel = physics.pins.map(() => new THREE.Vector3());
+  const pinVel = new THREE.Vector3();
+  function updateSounds() {
+    const live = phase === 'rolling' || phase === 'settling';
+    const b = physics.ball.translation();
+    const v = physics.ball.linvel();
+    const onLane = live && b.y > -0.25 && b.z > HEAD_PIN_Z - 1.2;
+    const nowInGutter = Math.abs(b.x) > LANE_HALF + 0.02 && b.y < 0.05;
+    if (onLane && nowInGutter && !inGutter) sound.gutter();
+    inGutter = nowInGutter;
+    sound.setRoll(onLane ? Math.hypot(v.x, v.z) : 0, nowInGutter);
+
+    let clacks = 0;
+    physics.pins.forEach((pin, i) => {
+      const lv = pin.linvel();
+      pinVel.set(lv.x, lv.y, lv.z);
+      const jolt = pinVel.distanceTo(prevPinVel[i]);
+      prevPinVel[i].copy(pinVel);
+      if (live && jolt > 0.7 && clacks < 6 && !physics.isPinRemoved(i)) {
+        clacks++;
+        sound.clack(jolt / 3);
+      }
+    });
+  }
+
   const splashAt = new THREE.Vector3();
   const splashDir = new THREE.Vector3();
   function updateJuice() {
@@ -606,6 +670,7 @@ async function start() {
       splashDir.set(v.x, 0, v.z).normalize();
       const strength = clamp(Math.hypot(v.x, v.z) / 9, 0.25, 1) * (splashed.size === 1 ? 1 : 0.6);
       juice.splash(splashAt, strength, splashDir);
+      sound.ballHit(strength);
     }
   }
 
@@ -661,6 +726,7 @@ async function start() {
     syncMeshes();
     updateJuice();
     juice.update(dt);
+    updateSounds();
     updateAimLine();
     updateCamera(dt);
     input.update(dt);
@@ -681,6 +747,7 @@ async function start() {
     get phase() {
       return phase;
     },
+    sound,
     get mode() {
       return mode;
     },

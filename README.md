@@ -4,6 +4,10 @@ A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the f
 
 **Current state: Stage 4.** Tomato Dave is in! He holds the ball, swings and slides into each throw, then reacts to every result with a speech bubble (strikes, spares, splits, gutters...). Tomato juice splashes when the ball hits the pins, and the alley has a neon sign, a ball return and neighbouring lanes.
 
+**Sound (stage 5):** an original lounge tune, "Tomato Lounge", composed in code (walking bass, electric piano, brushed drums, vibraphone), plus sound effects for the rolling ball, pin crashes, juicy squelches, the gutter, the pinsetter, and a crowd that cheers, claps or groans. Nothing is downloaded, so there are no licences to worry about. Music and Sounds can each be switched off from the menu or pause screen, and the choice is remembered.
+
+To use your own music instead, add an MP3 at `public/audio/music.mp3` and it will loop in place of the built-in tune.
+
 There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.

@@ -315,3 +315,17 @@ html, body {
 #menu, #gameover { align-items: end; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 #menu .logo { display: none; }
 @media (min-height: 700px) and (min-width: 700px) { #menu, #gameover { padding-bottom: 6vh; } }
+
+/* Music / sound toggles */
+.toggles { display: flex; gap: 8px; margin-top: 14px; }
+.card .toggle {
+  flex: 1;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  border: 2px solid #4a2e66;
+}
+.card .toggle b { color: #7be06f; margin-left: 4px; }
+.card .toggle[aria-pressed="false"] { opacity: 0.6; }
+.card .toggle[aria-pressed="false"] b { color: #ff8a7a; }
