@@ -8,6 +8,7 @@ import {
   OUTER_HALF,
   PIT_DEPTH,
   PIT_END_Z,
+  HEAD_PIN_Z,
   gutterPlates,
 } from '../game/dimensions';
 import { maskingPart } from './decor';
@@ -97,6 +98,9 @@ export function buildAlley(scene: THREE.Scene) {
     map: boardsTexture(laneLen),
     roughness: 0.25,
     metalness: 0.0,
+    // The shared studio reflections are far brighter than a dim alley. On a glossy lane seen
+    // at a low angle they washed the far end out to white, so the lane only takes a little.
+    envMapIntensity: 0.25,
   });
   const lane = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH, laneLen), laneMat);
   lane.rotation.x = -Math.PI / 2;
@@ -224,6 +228,13 @@ function buildPinsetterHood(scene: THREE.Scene) {
   // Deck lights: a glowing strip across the front, just behind the masking unit
   const glow = new THREE.MeshBasicMaterial({ color: '#fff1d6', toneMapped: false });
   add(box(halfW * 2 - 0.2, 0.015, 0.06, glow, 0, HOOD_CEILING_Y - 0.01, HOOD_FRONT_Z - 0.08));
+  // ...and the light they actually throw: deck lights shine down on the pins, so the pin
+  // deck is the brightest thing at the end of the lane, as in a real alley
+  const deckLight = new THREE.SpotLight('#fff1d6', 9, 4, 0.75, 0.6, 1.4);
+  deckLight.position.set(0, HOOD_CEILING_Y - 0.05, HOOD_FRONT_Z - 0.12);
+  deckLight.target.position.set(0, 0, HEAD_PIN_Z - 0.35);
+  scene.add(deckLight, deckLight.target);
+
   // Pinsetter rails running front to back, and a cross beam
   for (const side of [-1, 1]) add(box(0.05, 0.05, len - 0.1, metal, side * (halfW - 0.18), HOOD_CEILING_Y - 0.035, midZ));
   add(box(halfW * 2 - 0.3, 0.06, 0.06, metal, 0, HOOD_CEILING_Y - 0.04, HOOD_BACK_Z + 0.45));

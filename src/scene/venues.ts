@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TrackId } from '../audio/music';
 import { DECK_END_Z, OUTER_HALF, PIT_END_Z } from '../game/dimensions';
 import { canvasTexture, carpet, maskingPanel, maskingPart, neonSign } from './decor';
+import { scoreMonitor } from './scoreboard';
 
 // The places Tomato Dave can bowl. The lanes are the same everywhere; each venue adds its
 // own walls, ceiling, lights, signs, music and a few moving effects.
@@ -96,7 +97,7 @@ function laneGlow(g: THREE.Group, colour: string) {
 }
 
 // ---------------------------------------------------------------- Tomato Dave's
-function classic(): Built {
+function classic(scores: THREE.Texture): Built {
   const g = new THREE.Group();
   // Wall mural drawn to scale: one 512px tile covers the full wall height (3.9 m)
   const mural = canvasTexture(512, 512, (c) => {
@@ -164,7 +165,9 @@ function classic(): Built {
     c.font = '700 40px "Trebuchet MS", sans-serif';
     c.fillText('LANE 7  ·  GOOD LUCK!', 256, 180);
   });
-  for (const x of [0, -NEIGHBOUR_X, NEIGHBOUR_X]) {
+  // Ours shows the live scoreboard; the neighbours' just wish everyone luck
+  g.add(scoreMonitor(scores, CEIL_Y));
+  for (const x of [-NEIGHBOUR_X, NEIGHBOUR_X]) {
     const mon = new THREE.Group();
     mon.add(boxAt(0.95, 0.56, 0.06, std('#111'), 0, 0, 0));
     // Screen faces the bowler (towards +z)
@@ -196,7 +199,7 @@ function classic(): Built {
 }
 
 // ---------------------------------------------------------------- Server Room Lanes
-function server(): Built {
+function server(scores: THREE.Texture): Built {
   const g = new THREE.Group();
   const floorTex = canvasTexture(128, 128, (c) => {
     c.fillStyle = '#3a3f4a';
@@ -267,6 +270,8 @@ function server(): Built {
   const strip = basic('#7fd8ff');
   for (const x of [-NEIGHBOUR_X / 2, NEIGHBOUR_X / 2]) g.add(boxAt(0.06, 0.03, ROOM_LEN - 2, strip, x, CEIL_Y - 0.03, MID_Z));
 
+  g.add(scoreMonitor(scores, CEIL_Y));
+
   // A big terminal screen behind the pins
   const term = canvasTexture(512, 256, (c) => {
     c.fillStyle = '#020a05';
@@ -305,7 +310,7 @@ function server(): Built {
 }
 
 // ---------------------------------------------------------------- Disco Inferno
-function disco(): Built {
+function disco(scores: THREE.Texture): Built {
   const g = new THREE.Group();
   const wallTex = canvasTexture(512, 256, (c) => {
     const grd = c.createLinearGradient(0, 0, 0, 256);
@@ -331,6 +336,8 @@ function disco(): Built {
   room(g, std('#ffffff', { map: wallTex }), std('#08020c'), std('#ffffff', { map: wallTex }), std('#1a0a24'));
   signage(g, 'DISCO INFERNO', '★ BOOGIE & BOWL ★', '#ff3cc7', '#ffe03c', 'LANE 54', '#2a0a2e', '#120414', '#ffd23a', '#ff3cc7');
   laneGlow(g, '#ff3cc7');
+
+  g.add(scoreMonitor(scores, CEIL_Y));
 
   // Mirror ball
   const ball = new THREE.Mesh(
@@ -407,7 +414,7 @@ function disco(): Built {
 }
 
 // ---------------------------------------------------------------- Rooftop at Sunset
-function rooftop(): Built {
+function rooftop(scores: THREE.Texture): Built {
   const g = new THREE.Group();
   const deckTex = canvasTexture(256, 64, (c) => {
     for (let i = 0; i < 8; i++) {
@@ -420,6 +427,13 @@ function rooftop(): Built {
   const deck = std('#ffffff', { map: deckTex });
   for (const side of [-1, 1]) g.add(plane(4, ROOM_LEN + 6, deck, [side * (WALL_X + 1.3), 0.001, MID_Z], [-Math.PI / 2, 0, 0]));
   g.add(plane(WALL_X * 2 + 6, FRONT_Z - 4.5 + 3, deck, [0, -0.004, (FRONT_Z + 4.5) / 2 + 1.5], [-Math.PI / 2, 0, 0]));
+
+  // No ceiling up here: the scoreboard hangs from a slim gantry across the lanes
+  const steel = std('#3a2a33', { metalness: 0.6, roughness: 0.4 });
+  const GANTRY_Y = 3.8;
+  for (const side of [-1, 1]) g.add(boxAt(0.08, GANTRY_Y, 0.08, steel, side * (WALL_X - 0.2), GANTRY_Y / 2, -1.2));
+  g.add(boxAt((WALL_X - 0.2) * 2 + 0.08, 0.08, 0.08, steel, 0, GANTRY_Y, -1.2));
+  g.add(scoreMonitor(scores, GANTRY_Y));
 
   // Low parapet walls around the roof, with potted plants
   const concrete = std('#6e5a6a');
@@ -516,7 +530,7 @@ function rooftop(): Built {
   };
 }
 
-const BUILDERS: Record<VenueId, () => Built> = { classic, server, disco, rooftop };
+const BUILDERS: Record<VenueId, (scores: THREE.Texture) => Built> = { classic, server, disco, rooftop };
 
 /** Builds venues on first use and swaps between them. */
 export class VenueManager {
@@ -527,6 +541,8 @@ export class VenueManager {
   constructor(
     private scene: THREE.Scene,
     private lights: Lighting,
+    /** The live scoreboard, shown on each venue's overhead monitor. */
+    private scores: THREE.Texture,
   ) {}
 
   get current(): VenueInfo {
@@ -538,7 +554,7 @@ export class VenueManager {
     if (this.currentId) this.built.get(this.currentId)!.group.visible = false;
     let b = this.built.get(id);
     if (!b) {
-      b = BUILDERS[id]();
+      b = BUILDERS[id](this.scores);
       this.built.set(id, b);
       this.scene.add(b.group);
     }

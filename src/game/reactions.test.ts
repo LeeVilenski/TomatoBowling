@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyThrow, isSplit, pickLine } from './reactions';
+import { classifyThrow, CommentPacer, isSplit, pickLine, streakName } from './reactions';
 
 describe('isSplit', () => {
   it('recognises classic splits', () => {
@@ -43,5 +43,29 @@ describe('pickLine', () => {
       expect(line).not.toBe(last);
       last = line;
     }
+  });
+});
+
+describe('CommentPacer', () => {
+  it('always comments on the big moments', () => {
+    const pacer = new CommentPacer(() => 0.99); // would never pick an ordinary ball
+    for (const kind of ['strike', 'spare', 'split', 'gutter', 'miss'] as const) expect(pacer.shouldComment(kind)).toBe(true);
+  });
+
+  it('comments on some ordinary balls, but never stays quiet for more than two in a row', () => {
+    const pacer = new CommentPacer(() => 0.99);
+    const said = Array.from({ length: 9 }, () => pacer.shouldComment('meh'));
+    expect(said).toEqual([false, false, true, false, false, true, false, false, true]);
+    const chatty = new CommentPacer(() => 0.1);
+    expect(chatty.shouldComment('good')).toBe(true);
+  });
+});
+
+describe('streakName', () => {
+  it('names runs of three or more strikes', () => {
+    expect(streakName(2)).toBeNull();
+    expect(streakName(3)).toBe('TURKEY!');
+    expect(streakName(4)).toBe('HAMBONE!');
+    expect(streakName(7)).toBe('7-BAGGER!');
   });
 });

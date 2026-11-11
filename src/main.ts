@@ -20,7 +20,9 @@ import { buildDecor } from './scene/decor';
 import { ReturnChute } from './scene/chute';
 import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
-import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
+import { PathRibbon } from './scene/pathRibbon';
+import { Scoreboard, type ScoreAnimation } from './scene/scoreboard';
+import { classifyThrow, CommentPacer, pickLine, streakName, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
 import { Sound } from './audio/sound';
 import { LeaderboardScreen } from './ui/leaderboardScreen';
@@ -41,7 +43,11 @@ const MIN_SPEED = 3; // a gentle roll (~7 mph)
 const MAX_SPEED = 11;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
 const REACTION_AT = 1.1; // seconds of looking at the pins before cutting to Dave's reaction
-const RESULT_PAUSE = 3.6; // seconds before the pinsetter runs on its own
+const RESULT_PAUSE = 3.6; // seconds before the pinsetter runs on its own (when Dave comments)
+const QUIET_PAUSE = 1.6; // ...and when he lets the ball pass without a word
+const AUTO_REPLAY_AT = 0.9; // strikes replay automatically, this long after the result
+const AUTO_REPLAY_AFTER_BANNER = 2.1; // ...or after the turkey banner has had its moment
+const HINT_THROWS = 5; // the controls hint fades once someone has thrown this many balls
 const FAST = 3; // fast forward speed
 // Where Dave stands relative to the ball: the ball sits in his right hand
 const DAVE_OFFSET_X = 0.3;
@@ -64,7 +70,6 @@ async function start() {
   const physicsReady = BowlingPhysics.create();
   const canvas = $('game') as HTMLCanvasElement;
   const status = $('status');
-  const readout = $('readout');
   const powerMeter = $('power');
   const powerFill = $('power-fill');
   const spinValue = $('spin-value');
@@ -85,7 +90,8 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
   const rig = new CameraRig(camera);
   const { keyLight, hemi, fill } = buildAlley(scene);
-  const venues = new VenueManager(scene, { hemi, key: keyLight, fill });
+  const scoreboard = new Scoreboard();
+  const venues = new VenueManager(scene, { hemi, key: keyLight, fill }, scoreboard.texture);
   const chute = new ReturnChute();
   scene.add(chute.group);
 
@@ -140,6 +146,7 @@ async function start() {
   // Venue: where Dave bowls (each has its own look and music)
   function selectVenue(id: VenueId) {
     venues.select(id);
+    scoreboard.setTheme(id);
     sound.setTrack(venues.current.track);
     storage.saveText('venue', id);
     $('venue-name').textContent = `📍 ${venues.current.name}`;
@@ -166,14 +173,11 @@ async function start() {
   scene.add(sweepBar);
   const pinsetter = new Pinsetter(physics, sweepBar);
 
-  // Aim guide: dashed line showing roughly where the ball will go, including the hook
+  // Aim guide: dashed line on the lane showing where the ball will go, including the hook
   const AIM_POINTS = 40;
-  const aimGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: AIM_POINTS }, () => new THREE.Vector3()));
-  const aimLine = new THREE.Line(
-    aimGeo,
-    new THREE.LineDashedMaterial({ color: '#ffe066', dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.8 }),
-  );
-  scene.add(aimLine);
+  const aimLine = new PathRibbon(AIM_POINTS, '#ffe066', 0.03, 0.85);
+  const aimPoints = Array.from({ length: AIM_POINTS }, () => ({ x: 0, z: 0 }));
+  scene.add(aimLine.mesh);
 
   // ---- Throw state ----
   let phase: Phase = 'aiming';
@@ -188,6 +192,30 @@ async function start() {
   let lastThrow = { speed: 0, spin: 0, knocked: 0 };
   let reaction: ReactionKind = 'meh';
   let reactionShown = false;
+  let daveComments = true; // whether Dave reacts to this ball (see CommentPacer)
+  let autoReplay = false; // strikes play their replay on their own
+  let autoReplayAt = AUTO_REPLAY_AT;
+  // The overhead scoreboard's animation for this ball, played while the pinsetter runs
+  let pendingAnim: { kind: ScoreAnimation; label?: string; sub?: string; glance: boolean } | null = null;
+  let monitorGlance = false; // the camera looks up at the monitor while it plays
+  let practiceStreak = 0;
+  const banner = $('banner');
+  let bannerTimer: number | undefined;
+  function showBanner(text: string) {
+    banner.textContent = text;
+    banner.hidden = false;
+    // Restart the animation even if the banner was already showing
+    banner.classList.remove('show');
+    void banner.offsetWidth;
+    banner.classList.add('show');
+    clearTimeout(bannerTimer);
+    bannerTimer = window.setTimeout(() => (banner.hidden = true), 2200);
+  }
+  const pacer = new CommentPacer();
+  // The controls hint fades away once the player has the hang of it
+  let throwsMade = storage.count('throws');
+  const hint = $('hint');
+  hint.classList.toggle('faded', throwsMade >= HINT_THROWS);
   const splashed = new Set<number>();
   let releaseBlend = 0; // eases the ball from Dave's hand down onto the lane
   let inGutter = false;
@@ -222,18 +250,8 @@ async function start() {
   const setStatus = (text: string) => (status.textContent = text);
   const spinLabel = (v: number) => (Math.abs(v) < 0.005 ? 'none' : `${v < 0 ? '◀' : '▶'} ${Math.round(Math.abs(v) * 100)}%`);
 
-  /** `thrownSpin` shows the spin of a swipe throw instead of the keyboard/mouse setting. */
-  function updateReadout(thrownSpin?: number) {
-    let where: string;
-    if (mode === 'practice') {
-      where = practiceRack ? 'Spare practice' : `Practice · Ball ${practiceBall}`;
-    } else if (match) {
-      const pos = match.position;
-      where = `${match.players.length > 1 ? match.player.name + ' · ' : ''}Frame ${Math.min(pos.frame + 1, 10)} · Ball ${pos.ball + 1}`;
-    } else {
-      where = '';
-    }
-    readout.textContent = `${where} · Spin ${spinLabel(thrownSpin ?? spin)}`;
+  /** The spin setting on the mouse/keyboard spin panel. */
+  function updateSpinLabel() {
     spinValue.textContent = spinLabel(spin);
   }
 
@@ -256,8 +274,12 @@ async function start() {
     settleTime = 0;
     lastReplay = null;
     recorder.start();
+    if (throwsMade < HINT_THROWS) {
+      throwsMade++;
+      storage.saveCount('throws', throwsMade);
+      if (throwsMade >= HINT_THROWS) hint.classList.add('faded');
+    }
     setStatus(`Rolling… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
-    updateReadout(spinValue);
   }
 
   function resultMessage(m: string, knocked: number, firstBall: boolean) {
@@ -279,6 +301,9 @@ async function start() {
     reactionShown = false;
     const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
+    daveComments = pacer.shouldComment(reaction);
+    autoReplay = reaction === 'strike' && lastReplay !== null;
+    autoReplayAt = AUTO_REPLAY_AT;
     if (reaction === 'strike') {
       sound.cheer();
       buzz([40, 60, 90]);
@@ -289,11 +314,14 @@ async function start() {
     else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
 
     if (mode === 'practice') {
+      practiceStreak = reaction === 'strike' ? practiceStreak + 1 : fresh ? 0 : practiceStreak;
+      celebrate(reaction, practiceStreak);
       if (practiceRack) {
         setStatus(knocked === standingBefore ? 'Picked it up! 🍅' : `Missed — ${standingBefore - knocked} left`);
         nextSetter = 'rerack';
       } else if (practiceBall === 1) {
         setStatus(resultMessage(mark(knocked, 10, true), knocked, true));
+        scoreboard.showPractice(knocked === 10 ? 'STRIKE!' : `${knocked} pin${knocked === 1 ? '' : 's'}`);
         nextSetter = knocked === 10 ? 'rerack' : 'clear';
       } else {
         setStatus(resultMessage(mark(knocked, standingBefore, false), knocked, false));
@@ -306,13 +334,33 @@ async function start() {
     const firstBall = match.position.ball === 0;
     const tracker = trackers[match.current];
     gainProgress(tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other'));
+    celebrate(reaction, tracker.streak);
     outcome = match.recordRoll(knocked);
     renderScorecard(scorecardEl, match);
+    scoreboard.showScores(match.players, match.players.indexOf(match.player));
     setStatus(resultMessage(outcome.mark, knocked, firstBall));
     nextSetter = outcome.freshRack ? 'rerack' : 'clear';
   }
 
+  /** The turkey banner, and which animation the overhead scoreboard plays for this ball. */
+  function celebrate(kind: ReactionKind, streak: number) {
+    const run = kind === 'strike' ? streakName(streak) : null;
+    if (run) {
+      showBanner(run);
+      autoReplayAt = AUTO_REPLAY_AFTER_BANNER;
+      pendingAnim = { kind: 'turkey', label: run, sub: `${streak} strikes in a row!`, glance: true };
+    } else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
+    else if (kind === 'gutter') pendingAnim = { kind: 'gutter', glance: true };
+    else if (kind === 'spare') pendingAnim = { kind: 'spare', glance: false };
+    else pendingAnim = null;
+  }
+
   function runPinsetter(setterMode: PinsetterMode) {
+    if (pendingAnim) {
+      scoreboard.play(pendingAnim.kind, pendingAnim.label, pendingAnim.sub);
+      monitorGlance = pendingAnim.glance;
+      pendingAnim = null;
+    }
     phase = 'sweeping';
     dave.idle();
     speech.hide();
@@ -343,7 +391,7 @@ async function start() {
     if (mode === 'practice') {
       practiceBall = setterMode === 'clear' ? 2 : 1;
       setStatus(practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
-      updateReadout();
+      updateSpinLabel();
       return;
     }
     if (!match) return;
@@ -365,8 +413,9 @@ async function start() {
     if (pos.frame === 9 && pos.ball === 2) say('bonus ball!');
     else if (pos.ball === 0) say(pos.frame === 9 ? 'final frame!' : 'line up and throw!');
     else say(pos.standing === 10 ? 'bonus ball!' : 'pick up the spare!');
-    updateReadout();
+    updateSpinLabel();
     renderScorecard(scorecardEl, match);
+    scoreboard.showScores(match.players, match.players.indexOf(match.player));
   }
 
   // ---- Replay ----
@@ -388,6 +437,8 @@ async function start() {
     document.body.classList.remove('replaying');
     sound.setRoll(0, false);
     // Back to Dave for his reaction, then on to the next ball as usual
+    autoReplay = false;
+    daveComments = true;
     resultTime = REACTION_AT;
     reactionShown = false;
   }
@@ -425,10 +476,12 @@ async function start() {
     for (const s of SCREENS) $(s).hidden = s !== id;
     $('hud').hidden = !IN_GAME_SCREENS.includes(id);
     $('pause-btn').hidden = id !== null;
-    $('hint').hidden = id !== null;
+    hint.hidden = id !== null;
     $('spin').hidden = id !== null;
     $('practice-panel').hidden = !(id === null && mode === 'practice');
+    legend.hidden = !(id === null && mode === 'practice');
     if (id === 'menu') {
+      scoreboard.showIdle();
       if (phase === 'replay') endReplay();
       dave.wave();
       speech.hide();
@@ -452,6 +505,11 @@ async function start() {
     aimX = 0;
     recorder.stop();
     lastReplay = null;
+    autoReplay = false;
+    pendingAnim = null;
+    monitorGlance = false;
+    practiceStreak = 0;
+    scoreboard.stopAnimation();
     replayBadge.hidden = true;
     document.body.classList.remove('replaying');
     physics.resetPins();
@@ -468,7 +526,8 @@ async function start() {
     if (match) setTurnStatus();
     else {
       setStatus('Practice: throw as much as you like');
-      updateReadout();
+      scoreboard.showPractice('Lane 7 is yours');
+      updateSpinLabel();
     }
   }
 
@@ -552,6 +611,7 @@ async function start() {
     b.addEventListener('click', () => {
       if (phase !== 'aiming' && phase !== 'result') return;
       practiceRack = b.dataset.rack ? b.dataset.rack.split(',').map(Number) : null;
+      scoreboard.showPractice(practiceRack ? `Spare: ${b.textContent}` : 'Full rack');
       practiceBall = 1;
       updatePracticeButtons();
       runPinsetter('rerack');
@@ -598,7 +658,7 @@ async function start() {
     nudgeSpin(delta) {
       if (phase !== 'aiming' && phase !== 'charging') return;
       spin = clamp(Math.round((spin + delta) * 10) / 10, -1, 1);
-      updateReadout();
+      updateSpinLabel();
     },
     startCharge() {
       if (phase !== 'aiming') return;
@@ -638,7 +698,8 @@ async function start() {
       if (openScreen === 'pass') showScreen(null);
       else if (openScreen === null && phase === 'replay') endReplay();
       else if (openScreen === null && phase === 'result') {
-        if (resultTime < REACTION_AT) resultTime = REACTION_AT;
+        autoReplay = false; // tapping skips the automatic strike replay too
+        if (daveComments && resultTime < REACTION_AT) resultTime = REACTION_AT;
         else nextAfterResult();
       }
     },
@@ -735,7 +796,9 @@ async function start() {
   function currentShot(): Shot {
     if (MENU_SHOT_SCREENS.includes(openScreen)) return 'menu';
     if (phase === 'replay') return 'replay';
-    if (phase === 'result' && resultTime >= REACTION_AT) return 'dave';
+    if (phase === 'result' && daveComments && resultTime >= REACTION_AT) return 'dave';
+    if (monitorGlance && (phase === 'sweeping' || phase === 'aiming') && scoreboard.animating) return 'monitor';
+    monitorGlance = false;
     if (phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping') return 'aim';
     if (phase === 'rolling' || phase === 'settling') return 'follow';
     return 'pins';
@@ -743,22 +806,92 @@ async function start() {
 
   // ---- Per-frame updates ----
   const tmp = new THREE.Vector3();
+  // ---- Practice aim helper ----
+  // In practice the yellow line shows where the throw will really go: the throw is run on a
+  // second, pin-less physics world at the speed of your last practice throw. A blue
+  // line shows where your last throw actually went.
+  let predictor: BowlingPhysics | null = null;
+  let predictorLoading = false;
+  let predicted: { x: number; z: number }[] = [];
+  let predictedKey = '';
+  let lastPredict = 0;
+  const DEFAULT_PRACTICE_POWER = 0.55;
+  const legend = $('aim-legend');
+  const ghostLine = new PathRibbon(AIM_POINTS, '#5fd0ff', 0.026, 0.8, 0.15);
+  const ghostPoints = Array.from({ length: AIM_POINTS }, () => ({ x: 0, z: 0 }));
+  ghostLine.visible = false;
+  scene.add(ghostLine.mesh);
+
+  function practiceSpeed() {
+    return lastThrow.speed > 0 ? lastThrow.speed : (MIN_SPEED + DEFAULT_PRACTICE_POWER * (MAX_SPEED - MIN_SPEED)) * speedBonus;
+  }
+
+  function updatePrediction(now: number) {
+    if (!predictor) {
+      if (!predictorLoading) {
+        predictorLoading = true;
+        void BowlingPhysics.create().then((p) => {
+          for (const i of p.pins.keys()) p.removePin(i);
+          predictor = p;
+        });
+      }
+      return false;
+    }
+    if (predictor.ballRadius !== physics.ballRadius) predictor.setBallRadius(physics.ballRadius);
+    const speed = practiceSpeed();
+    const key = [aimX, aim, spin, speed, physics.ballRadius].map((v) => v.toFixed(3)).join('|');
+    // At most ten times a second, and only when something changed
+    if (key !== predictedKey && now - lastPredict > 100) {
+      predictedKey = key;
+      lastPredict = now;
+      predicted = predictor.tracePath({ x: aimX, angle: aim * MAX_ANGLE, speed, spin }, HEAD_PIN_Z);
+      legend.textContent = `Yellow: where it'll go at ${speed.toFixed(1)} m/s` + (lastReplay ? ' · Blue: your last throw' : '');
+    }
+    return predicted.length > 1;
+  }
+
+  /** The last throw's path, from the replay recording, up to the pins. */
+  function updateGhost() {
+    const r = lastReplay;
+    ghostLine.visible = mode === 'practice' && (phase === 'aiming' || phase === 'charging') && r !== null;
+    if (!ghostLine.visible || !r) return;
+    const until = r.hitTime ?? r.end;
+    for (let i = 0; i < AIM_POINTS; i++) {
+      r.sample((i / (AIM_POINTS - 1)) * until, 0, tmp, replayQuat);
+      ghostPoints[i].x = tmp.x;
+      ghostPoints[i].z = tmp.z;
+    }
+    ghostLine.set(ghostPoints, 0.003);
+  }
+
   function updateAimLine() {
     aimLine.visible = phase === 'aiming' || phase === 'charging';
+    updateGhost();
     if (!aimLine.visible) return;
+    if (mode === 'practice' && updatePrediction(performance.now())) {
+      // Spread the line's points evenly along the predicted path
+      for (let i = 0; i < AIM_POINTS; i++) {
+        const k = (i / (AIM_POINTS - 1)) * (predicted.length - 1);
+        const a = predicted[Math.floor(k)];
+        const b = predicted[Math.min(Math.ceil(k), predicted.length - 1)];
+        const f = k - Math.floor(k);
+        aimPoints[i].x = a.x + (b.x - a.x) * f;
+        aimPoints[i].z = a.z + (b.z - a.z) * f;
+      }
+      aimLine.set(aimPoints, 0.005);
+      return;
+    }
     const p = physics.ball.translation();
     const angle = aim * MAX_ANGLE;
     const length = -HEAD_PIN_Z;
-    const pos = aimGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < AIM_POINTS; i++) {
       const d = (i / (AIM_POINTS - 1)) * length;
       // Rough hook preview at a medium throw: almost nothing in the oil, then it bends late
       const hook = spin * 0.37 * Math.pow(d / length, 3);
-      tmp.set(p.x + Math.sin(angle) * d + hook, 0.005, p.z - BALL_RADIUS - Math.cos(angle) * d);
-      pos.setXYZ(i, tmp.x, tmp.y, tmp.z);
+      aimPoints[i].x = p.x + Math.sin(angle) * d + hook;
+      aimPoints[i].z = p.z - BALL_RADIUS - Math.cos(angle) * d;
     }
-    pos.needsUpdate = true;
-    aimLine.computeLineDistances();
+    aimLine.set(aimPoints, 0.005);
   }
 
   const pinPos = new THREE.Vector3();
@@ -864,6 +997,16 @@ async function start() {
       updateReplay(dt);
     } else if (phase === 'result') {
       resultTime += dt;
+      if (autoReplay && resultTime >= autoReplayAt) {
+        autoReplay = false;
+        startReplay();
+        return;
+      }
+      if (!daveComments) {
+        // A quiet ball: a look at the pins, then straight on
+        if (resultTime > QUIET_PAUSE) nextAfterResult();
+        return;
+      }
       if (resultTime >= REACTION_AT && !reactionShown) {
         reactionShown = true;
         dave.react(reaction);
@@ -906,6 +1049,7 @@ async function start() {
     juice.update(phase === 'replay' && lastReplay ? gameDt * lastReplay.rateAt(replayT) : gameDt);
     updateSounds(frozen);
     venues.update(dt);
+    scoreboard.update(dt);
     if (physics.bumped) {
       physics.bumped = false;
       sound.bump();
@@ -954,6 +1098,12 @@ async function start() {
     },
     get replay() {
       return lastReplay;
+    },
+    scoreboard,
+    /** Play a scoreboard animation as if a ball had just been thrown, for checking how it looks. */
+    celebrate(kind: ReactionKind, streak = 1) {
+      celebrate(kind, streak);
+      runPinsetter('rerack');
     },
     /** Jump the replay to a moment (seconds into the throw), for checking camera shots. */
     seekReplay(t: number) {

@@ -298,6 +298,28 @@ export class BowlingPhysics {
     this.stemWasDown = down;
   }
 
+  /**
+   * Runs a throw and records where the ball goes, until it passes `untilZ` or drops into a
+   * gutter. Used on a separate, pin-less world to preview a throw's path for practice.
+   * Returns ball positions every `every` steps, then puts the ball back.
+   */
+  tracePath(t: ThrowParams, untilZ: number, every = 4, maxSteps = 1500): { x: number; z: number }[] {
+    const bumps = this.stemBumps;
+    this.stemBumps = false;
+    this.throwBall(t);
+    const pts: { x: number; z: number }[] = [];
+    for (let i = 0; i < maxSteps; i++) {
+      this.step();
+      if (i % every !== 0) continue;
+      const p = this.ball.translation();
+      pts.push({ x: p.x, z: p.z });
+      if (p.z < untilZ || p.y < this.ballRadius - 0.05) break;
+    }
+    this.stemBumps = bumps;
+    this.holdBall(t.x);
+    return pts;
+  }
+
   /** Swap to a different-sized ball (same weight), e.g. the cherry tomato. */
   setBallRadius(r: number) {
     this.ballRadius = r;

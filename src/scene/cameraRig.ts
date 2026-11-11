@@ -17,7 +17,9 @@ export type Shot =
   /** Looking at the pins after a throw. */
   | 'pins'
   /** Replay: a camera inside the pinsetter, looking back up the lane. */
-  | 'replay';
+  | 'replay'
+  /** A glance up at the overhead scoreboard while it plays an animation. */
+  | 'monitor';
 
 export interface ShotInput {
   shot: Shot;
@@ -40,6 +42,10 @@ const REPLAY_LOOK_DECK = new THREE.Vector3(0, 0, HEAD_PIN_Z - 0.15);
 const REPLAY_FOV = 50;
 /** Narrow screens need a wider view to fit the deck across. */
 const REPLAY_FOV_PORTRAIT = 94;
+
+// Glancing up at the overhead monitor (it hangs at y 3.3 over the approach) from behind Dave
+const MONITOR = new THREE.Vector3(0, 3.3, -1.2);
+const MONITOR_VIEW = new THREE.Vector3(0.15, 2.35, 1.3);
 
 export class CameraRig {
   private pos = new THREE.Vector3(0.35, 1.5, 2.4);
@@ -102,6 +108,13 @@ export class CameraRig {
       case 'pins':
         this.wantPos.set(0, 0.85, HEAD_PIN_Z + 3.6);
         this.wantLook.set(0, 0.15, HEAD_PIN_Z - 0.4);
+        break;
+      case 'monitor':
+        this.wantPos.copy(MONITOR_VIEW);
+        // Aim a little above it, so it sits just below the scorecard at the top of the screen
+        this.wantLook.copy(MONITOR).setY(MONITOR.y + (portrait ? 0.1 : 0.22));
+        // Close enough that the screen fills most of the width
+        fov = portrait ? 50 : 33;
         break;
       case 'replay': {
         // A fixed camera that tilts down onto the deck as the ball arrives, and pushes in a touch

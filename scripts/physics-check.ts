@@ -44,6 +44,27 @@ async function main() {
     check(ballY > -0.6, `${s.name}: ball stays inside the alley (y ${ballY.toFixed(2)})`);
   }
 
+  // The practice aim helper previews a throw on a second, pin-less world. It must match
+  // where the real ball goes.
+  const preview = await BowlingPhysics.create();
+  for (const i of preview.pins.keys()) preview.removePin(i);
+  for (const t of [
+    { x: 0.3, angle: 0, speed: 8, spin: -0.7 },
+    { x: -0.1, angle: 0.03, speed: 6, spin: 0.5 },
+  ]) {
+    const path = preview.tracePath(t, -18.29);
+    ph.resetPins();
+    for (const i of ph.pins.keys()) ph.removePin(i);
+    ph.holdBall(t.x);
+    run(5);
+    ph.throwBall(t);
+    while (ph.ball.translation().z > path[path.length - 1].z) ph.step();
+    const end = path[path.length - 1];
+    const miss = Math.abs(ph.ball.translation().x - end.x);
+    const hooked = Math.sign(end.x - t.x - Math.sin(t.angle) * 18) === Math.sign(t.spin);
+    check(miss < 0.02 && hooked, `aim preview matches the real throw (${(miss * 100).toFixed(1)} cm apart at the pins, hooks the right way)`);
+  }
+
   // With stem hops switched off, the lane itself must never make the ball bounce
   for (const speed of [3, 6, 8, 11]) {
     for (const spin of [0, 1]) {
