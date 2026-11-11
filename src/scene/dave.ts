@@ -63,6 +63,52 @@ export const DAVE_COLOURS = {
   shoe: '#1a1210',
 };
 
+interface Outfit {
+  suit: string;
+  pattern?: 'pinstripe' | 'tracksuit';
+  tie?: string;
+  bowTie?: boolean;
+  shirt: boolean;
+  shoes: string;
+}
+
+export const OUTFITS: Record<string, Outfit> = {
+  navy: { suit: DAVE_COLOURS.suit, tie: DAVE_COLOURS.tie, shirt: true, shoes: DAVE_COLOURS.shoe },
+  tuxedo: { suit: '#121216', bowTie: true, shirt: true, shoes: '#0a0a0a' },
+  pinstripe: { suit: '#3a3d48', pattern: 'pinstripe', tie: '#e0b02e', shirt: true, shoes: '#5a2e14' },
+  tracksuit: { suit: '#2f8f2a', pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
+};
+
+const patterns = new Map<string, THREE.CanvasTexture>();
+/** Fabric textures that wrap around the arms, legs and body. */
+function patternTexture(kind: 'pinstripe' | 'tracksuit') {
+  const cached = patterns.get(kind);
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 32;
+  const g = c.getContext('2d')!;
+  if (kind === 'pinstripe') {
+    g.fillStyle = '#3a3d48';
+    g.fillRect(0, 0, 256, 32);
+    g.fillStyle = 'rgba(235, 235, 245, 0.75)';
+    for (let x = 0; x < 256; x += 14) g.fillRect(x, 0, 1.5, 32);
+  } else {
+    // Tomato-green tracksuit with white stripes down each side
+    g.fillStyle = '#2f8f2a';
+    g.fillRect(0, 0, 256, 32);
+    g.fillStyle = '#ffffff';
+    for (const u of [0.25, 0.75]) {
+      g.fillRect(u * 256 - 10, 0, 6, 32);
+      g.fillRect(u * 256 + 4, 0, 6, 32);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  patterns.set(kind, tex);
+  return tex;
+}
+
 export class Dave {
   readonly root = new THREE.Group();
   /** Where the ball sits in his right hand. */
@@ -77,6 +123,13 @@ export class Dave {
   private faceMat: THREE.MeshBasicMaterial;
   private headMat: THREE.MeshStandardMaterial;
   private faces = createFaceTextures();
+  private suitMat!: THREE.MeshStandardMaterial;
+  private shoeMat!: THREE.MeshStandardMaterial;
+  private tieMat!: THREE.MeshStandardMaterial;
+  private shirtFront!: THREE.Mesh;
+  private tie = new THREE.Group();
+  private bowTie = new THREE.Group();
+  private buttons = new THREE.Group();
 
   private pose = basePose();
   private state: State = 'idle';
@@ -95,6 +148,9 @@ export class Dave {
     const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
       new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true, ...extra });
     const suit = flat(suitColour);
+    this.suitMat = suit;
+    const shoeMat = flat(DAVE_COLOURS.shoe, { roughness: 0.3 });
+    this.shoeMat = shoeMat;
     const skin = flat(DAVE_COLOURS.skin);
     const shirt = flat(DAVE_COLOURS.shirt);
     const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, y = 0, x = 0, z = 0) => {
@@ -114,7 +170,7 @@ export class Dave {
       const knee = new THREE.Group();
       knee.position.y = -0.46;
       knee.add(mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.44, 7), suit, -0.22));
-      knee.add(mesh(new THREE.BoxGeometry(0.12, 0.07, 0.27), flat(DAVE_COLOURS.shoe, { roughness: 0.3 }), -0.46, 0, -0.05));
+      knee.add(mesh(new THREE.BoxGeometry(0.12, 0.07, 0.27), shoeMat, -0.46, 0, -0.05));
       hip.add(knee);
       this.hips.add(hip);
       return { hip, knee };
@@ -135,9 +191,23 @@ export class Dave {
     shirtFront.position.z = -0.156;
     shirtFront.rotation.y = Math.PI;
     this.spine.add(shirtFront);
-    this.spine.add(mesh(new THREE.BoxGeometry(0.045, 0.24, 0.02), flat(DAVE_COLOURS.tie), 0.44, 0, -0.16));
-    this.spine.add(mesh(new THREE.BoxGeometry(0.055, 0.04, 0.03), flat(DAVE_COLOURS.tie), 0.575, 0, -0.158));
-    for (const y of [0.24, 0.13]) this.spine.add(mesh(new THREE.SphereGeometry(0.014, 6, 4), flat('#d9c27a'), y, 0, -0.14));
+    this.shirtFront = shirtFront;
+    this.tieMat = flat(DAVE_COLOURS.tie);
+    this.tie.add(mesh(new THREE.BoxGeometry(0.045, 0.24, 0.02), this.tieMat, 0.44, 0, -0.16));
+    this.tie.add(mesh(new THREE.BoxGeometry(0.055, 0.04, 0.03), this.tieMat, 0.575, 0, -0.158));
+    this.spine.add(this.tie);
+    // Bow tie for the tuxedo: two little wedges and a knot
+    const bowMat = flat('#111111', { roughness: 0.4 });
+    for (const side of [-1, 1]) {
+      const wing = mesh(new THREE.ConeGeometry(0.035, 0.06, 4), bowMat, 0.575, side * 0.035, -0.16);
+      wing.rotation.z = (side * Math.PI) / 2;
+      this.bowTie.add(wing);
+    }
+    this.bowTie.add(mesh(new THREE.BoxGeometry(0.022, 0.025, 0.025), bowMat, 0.575, 0, -0.165));
+    this.bowTie.visible = false;
+    this.spine.add(this.bowTie);
+    for (const y of [0.24, 0.13]) this.buttons.add(mesh(new THREE.SphereGeometry(0.014, 6, 4), flat('#d9c27a'), y, 0, -0.14));
+    this.spine.add(this.buttons);
     // Shoulders
     for (const side of [1, -1]) this.spine.add(mesh(new THREE.SphereGeometry(0.075, 8, 6), suit, 0.55, 0.2 * side));
 
@@ -211,6 +281,20 @@ export class Dave {
     this.headPivot.add(mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.07, 6), leafMat, R * 0.88 * 2 + 0.03));
     this.headTop.position.y = R * 2;
     this.headPivot.add(this.headTop);
+  }
+
+  /** Changes Dave's outfit: 'navy', 'tuxedo', 'pinstripe' or 'tracksuit'. */
+  setOutfit(id: string) {
+    const o = OUTFITS[id] ?? OUTFITS.navy;
+    this.suitMat.map = o.pattern ? patternTexture(o.pattern) : null;
+    this.suitMat.color.set(o.pattern ? '#ffffff' : o.suit);
+    this.suitMat.needsUpdate = true;
+    this.tie.visible = !!o.tie;
+    if (o.tie) this.tieMat.color.set(o.tie);
+    this.bowTie.visible = !!o.bowTie;
+    this.shirtFront.visible = o.shirt;
+    this.buttons.visible = o.shirt;
+    this.shoeMat.color.set(o.shoes);
   }
 
   // ---------- Commands ----------

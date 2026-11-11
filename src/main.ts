@@ -10,7 +10,8 @@ import { renderScorecard } from './ui/scorecard';
 import { attachControls, type ControlTarget } from './input/controls';
 import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
-import { createPinMesh, createTomatoBall } from './scene/models';
+import { BALL_STYLES, createPinMesh, createTomatoBall } from './scene/models';
+import { GameTracker, ITEMS, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
 import { Dave } from './scene/dave';
 import { buildDecor } from './scene/decor';
 import { Juice } from './scene/juice';
@@ -59,7 +60,7 @@ async function start() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
-  buildAlley(scene);
+  const { keyLight } = buildAlley(scene);
 
   const physics = await BowlingPhysics.create();
 
@@ -68,11 +69,40 @@ async function start() {
     scene.add(m);
     return m;
   });
-  const ballMesh = createTomatoBall();
+  let ballMesh = createTomatoBall();
   scene.add(ballMesh);
   buildDecor(scene);
   const dave = new Dave();
   scene.add(dave.root);
+
+  // ---- Unlockables: progress, and the ball and suit Dave is using ----
+  let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
+  let equipped = storage.equipped();
+  let speedBonus = 1;
+  function equip(ball: string, suit: string) {
+    const owned = unlockedIds(progress);
+    if (!owned.has(ball)) ball = 'classic';
+    if (!owned.has(suit)) suit = 'navy';
+    equipped = { ball, suit };
+    storage.saveEquipped(equipped);
+    scene.remove(ballMesh);
+    ballMesh = createTomatoBall(ball);
+    scene.add(ballMesh);
+    physics.setBallRadius(BALL_STYLES[ball].radius);
+    speedBonus = ball === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
+    dave.setOutfit(suit);
+  }
+  equip(equipped.ball, equipped.suit);
+
+  // ---- Graphics quality: Low drops shadows and renders at a lower resolution ----
+  const lowEndGuess =
+    (navigator.hardwareConcurrency ?? 8) <= 4 || ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 3;
+  let quality = storage.text('quality', lowEndGuess ? 'low' : 'high');
+  function applyQuality() {
+    renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+    keyLight.castShadow = quality !== 'low';
+  }
+  applyQuality();
   const juice = new Juice(scene);
   const speech = new SpeechBubble($('speech'));
   const sound = new Sound();
@@ -150,7 +180,7 @@ async function start() {
   }
 
   function launch(p: number, aimValue: number, spinValue: number) {
-    const speed = MIN_SPEED + p * (MAX_SPEED - MIN_SPEED);
+    const speed = (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * speedBonus;
     downBefore = physics.pinsDown();
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
@@ -182,7 +212,10 @@ async function start() {
     reactionShown = false;
     const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
-    if (reaction === 'strike') sound.cheer();
+    if (reaction === 'strike') {
+      sound.cheer();
+      buzz([40, 60, 90]);
+    }
     else if (reaction === 'spare') sound.applause(1.6, 0.8);
     else if (reaction === 'good') sound.applause(1, 0.45);
     else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
@@ -207,6 +240,8 @@ async function start() {
 
     if (!match) return;
     const firstBall = match.position.ball === 0;
+    const tracker = trackers[match.current];
+    gainProgress(tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other'));
     outcome = match.recordRoll(knocked);
     renderScorecard(scorecardEl, match);
     setStatus(resultMessage(outcome.mark, knocked, firstBall));
@@ -262,12 +297,12 @@ async function start() {
   }
 
   // ---- Screens ----
-  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover', 'leaderboard'];
+  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover', 'leaderboard', 'wardrobe', 'tutorial'];
   function showScreen(id: string | null) {
     openScreen = id;
-    sound.setMusicMood(id === null || id === 'pass' ? 'game' : 'menu');
+    sound.setMusicMood(id === null || id === 'pass' || id === 'tutorial' ? 'game' : 'menu');
     for (const s of screens) ($(s) as HTMLElement).hidden = s !== id;
-    const inGame = id === null || id === 'pass' || id === 'pause';
+    const inGame = id === null || id === 'pass' || id === 'pause' || id === 'tutorial';
     $('hud').hidden = !inGame;
     $('pause-btn').hidden = id !== null;
     $('hint').hidden = id !== null;
@@ -285,6 +320,8 @@ async function start() {
   function startGame(newMode: Mode, names: string[] = ['You']) {
     mode = newMode;
     match = newMode === 'practice' ? null : new Match(names);
+    trackers = names.map(() => new GameTracker());
+    gameUnlocks = [];
     outcome = null;
     practiceBall = 1;
     practiceRack = null;
@@ -300,6 +337,7 @@ async function start() {
     renderScorecard(scorecardEl, match);
     updatePracticeButtons();
     showScreen(null);
+    if (!storage.flag('tutorial-seen')) showScreen('tutorial');
     if (match) setTurnStatus();
     else {
       setStatus('Practice: throw as much as you like');
@@ -312,6 +350,11 @@ async function start() {
     const totals = match.totals();
     const top = Math.max(...totals);
     dave.react(top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
+    const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
+    const unlockNote = () =>
+      [...gameUnlocks, ...fresh].length
+        ? `<div class="unlocks">🎁 Unlocked: <b>${[...gameUnlocks, ...fresh].map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
+        : '';
     const body = $('go-body');
     if (match.players.length === 1) {
       const score = totals[0];
@@ -320,7 +363,7 @@ async function start() {
       $('go-title').textContent = score === 300 ? 'PERFECT GAME!' : 'Game over';
       body.innerHTML = `<div class="big-score">${score}</div><p class="small">${
         isBest ? (best > 0 ? '🍅 New personal best!' : '🍅 First game in the books!') : `Your best: ${best}`
-      }</p>`;
+      }</p>${unlockNote()}`;
       offerSubmission(score, [...match.players[0].rolls]);
     } else {
       const leaders = match.leaders();
@@ -329,7 +372,7 @@ async function start() {
       $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
-        .join('')}</ul>`;
+        .join('')}</ul>${unlockNote()}`;
     }
     showScreen('gameover');
   }
@@ -408,6 +451,81 @@ async function start() {
         .join('');
     } catch (err) {
       status.textContent = err instanceof LeaderboardError ? err.message : 'Leaderboard offline — try again later.';
+    }
+  }
+
+  // ---- Progress, unlock toasts and the Wardrobe ----
+  let trackers: GameTracker[] = [];
+  let gameUnlocks: Item[] = []; // unlocked during the current game, listed on the game-over screen
+  /** Records progress; returns anything newly unlocked (and toasts it unless `toast` is false). */
+  function gainProgress(change: Partial<Progress>, toast = true): Item[] {
+    const before = progress;
+    progress = mergeProgress(progress, change);
+    storage.saveProgress(progress);
+    const fresh = newlyUnlocked(before, progress);
+    if (fresh.length && toast) {
+      gameUnlocks.push(...fresh);
+      showToast(`🎁 Unlocked: ${fresh.map((i) => i.name).join(', ')}!`);
+    }
+    return fresh;
+  }
+
+  const toastEl = $('toast');
+  let toastTimer: number | undefined;
+  function showToast(text: string) {
+    toastEl.textContent = text;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => (toastEl.hidden = true), 3500);
+  }
+
+  /** A short phone buzz on big moments (only where supported, and only with sounds on). */
+  function buzz(pattern: number | number[]) {
+    if (sound.sfxOn && 'vibrate' in navigator) navigator.vibrate(pattern);
+  }
+
+  const SWATCHES: Record<string, string> = {
+    classic: 'radial-gradient(circle at 35% 30%, #ff6a55, #c81d12)',
+    cherry: 'radial-gradient(circle at 35% 30%, #ff7a5c, #e0261b)',
+    green: 'radial-gradient(circle at 35% 30%, #b6ea6c, #5ea52c)',
+    heirloom: 'repeating-linear-gradient(100deg, #d9361a 0 6px, #ffb02e 6px 10px, #8bbf3a 10px 13px)',
+    golden: 'radial-gradient(circle at 35% 30%, #fff1b0, #d4a017)',
+    navy: '#1f2a4d',
+    tuxedo: 'linear-gradient(90deg, #121216 40%, #fff 40% 60%, #121216 60%)',
+    pinstripe: 'repeating-linear-gradient(90deg, #3a3d48 0 5px, #c9c9d4 5px 6px)',
+    tracksuit: 'linear-gradient(90deg, #2f8f2a 30%, #fff 30% 38%, #2f8f2a 38% 62%, #fff 62% 70%, #2f8f2a 70%)',
+  };
+
+  function openWardrobe() {
+    showScreen('wardrobe');
+    renderWardrobe();
+  }
+
+  function renderWardrobe() {
+    const owned = unlockedIds(progress);
+    for (const kind of ['ball', 'suit'] as const) {
+      const box = $(kind === 'ball' ? 'wr-balls' : 'wr-suits');
+      box.innerHTML = '';
+      for (const item of ITEMS.filter((i) => i.kind === kind)) {
+        const have = owned.has(item.id);
+        const on = equipped[kind] === item.id;
+        const b = document.createElement('button');
+        b.className = `chip${on ? ' on' : ''}${have ? '' : ' locked'}`;
+        b.setAttribute('aria-pressed', String(on));
+        b.innerHTML = `<span class="swatch${kind === 'suit' ? ' suit' : ''}" style="background:${SWATCHES[item.id]}"></span><span>${item.name}</span>${
+          have ? '' : `<span class="how">${item.how}</span>`
+        }`;
+        b.addEventListener('click', () => {
+          if (!have) {
+            $('wr-hint').textContent = `🔒 ${item.name}: ${item.how}.`;
+            return;
+          }
+          equip(kind === 'ball' ? item.id : equipped.ball, kind === 'suit' ? item.id : equipped.suit);
+          $('wr-hint').textContent = '';
+          renderWardrobe();
+        });
+        box.append(b);
+      }
     }
   }
 
@@ -529,6 +647,11 @@ async function start() {
   const toggleButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-toggle]'));
   function refreshToggles() {
     for (const b of toggleButtons) {
+      if (b.dataset.toggle === 'quality') {
+        b.setAttribute('aria-pressed', String(quality === 'high'));
+        b.querySelector('b')!.textContent = quality === 'high' ? 'High' : 'Low';
+        continue;
+      }
       const on = b.dataset.toggle === 'music' ? sound.musicOn : sound.sfxOn;
       b.setAttribute('aria-pressed', String(on));
       b.querySelector('b')!.textContent = on ? 'On' : 'Off';
@@ -538,7 +661,12 @@ async function start() {
     b.addEventListener('click', () => {
       sound.unlock();
       if (b.dataset.toggle === 'music') sound.toggleMusic();
-      else sound.toggleSfx();
+      else if (b.dataset.toggle === 'sfx') sound.toggleSfx();
+      else {
+        quality = quality === 'high' ? 'low' : 'high';
+        storage.saveText('quality', quality);
+        applyQuality();
+      }
       refreshToggles();
     });
   }
@@ -557,10 +685,16 @@ async function start() {
       else if (go === 'setup') openSetup();
       else if (go === 'menu') showScreen('menu');
       else if (go === 'leaderboard') void openLeaderboard();
+      else if (go === 'wardrobe') openWardrobe();
     }),
   );
   $('pause-btn').addEventListener('click', () => controls.pause());
   $('resume').addEventListener('click', () => showScreen(null));
+  $('how-to').addEventListener('click', () => showScreen('tutorial'));
+  $('tutorial-ok').addEventListener('click', () => {
+    storage.setFlag('tutorial-seen');
+    showScreen(null);
+  });
   $('restart').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
   $('play-again').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
   $('pass-ready').addEventListener('click', () => showScreen(null));
@@ -631,10 +765,10 @@ async function start() {
     const portrait = camera.aspect < 0.8;
     const dx = aimX - DAVE_OFFSET_X;
     davePos.copy(dave.root.position);
-    const menuShot = openScreen === 'menu' || openScreen === 'gameover' || openScreen === 'leaderboard' || openScreen === 'setup';
+    const menuShot = ['menu', 'gameover', 'leaderboard', 'setup', 'wardrobe'].includes(openScreen ?? '');
     const showDave = menuShot || (phase === 'result' && resultTime >= REACTION_AT);
 
-    if (openScreen === 'menu' || openScreen === 'gameover' || openScreen === 'leaderboard' || openScreen === 'setup') {
+    if (menuShot) {
       // Menu card sits low on the screen; frame Dave in the top half above it
       wantPos.set(davePos.x + 0.5, 1.2, davePos.z - (portrait ? 4.6 : 3.4));
       wantLook.set(davePos.x, portrait ? 0.15 : 0.55, davePos.z);
@@ -752,6 +886,7 @@ async function start() {
       const strength = clamp(Math.hypot(v.x, v.z) / 9, 0.25, 1) * (splashed.size === 1 ? 1 : 0.6);
       juice.splash(splashAt, strength, splashDir);
       sound.ballHit(strength);
+      if (splashed.size === 1) buzz(25);
     }
   }
 

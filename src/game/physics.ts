@@ -48,6 +48,7 @@ export class BowlingPhysics {
   readonly ball: RAPIER.RigidBody;
   readonly pins: RAPIER.RigidBody[] = [];
   private ballCollider!: RAPIER.Collider;
+  ballRadius = BALL_RADIUS;
   private pinByCollider = new Map<number, number>();
   private readonly spots = pinSpots();
 
@@ -172,8 +173,8 @@ export class BowlingPhysics {
   /** Put the ball back on the approach, frozen, ready to throw. */
   holdBall(x: number) {
     this.ball.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
-    this.ball.setTranslation({ x, y: BALL_RADIUS, z: -0.3 }, true);
-    this.ball.setNextKinematicTranslation({ x, y: BALL_RADIUS, z: -0.3 });
+    this.ball.setTranslation({ x, y: this.ballRadius, z: -0.3 }, true);
+    this.ball.setNextKinematicTranslation({ x, y: this.ballRadius, z: -0.3 });
     this.ball.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
     this.ball.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -181,7 +182,7 @@ export class BowlingPhysics {
 
   throwBall({ x, angle, speed, spin = 0 }: ThrowParams) {
     this.ball.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-    this.ball.setTranslation({ x, y: BALL_RADIUS, z: -0.3 }, true);
+    this.ball.setTranslation({ x, y: this.ballRadius, z: -0.3 }, true);
     const dx = Math.sin(angle);
     const dz = -Math.cos(angle);
     this.ball.setLinvel({ x: dx * speed, y: 0, z: dz * speed }, true);
@@ -239,6 +240,13 @@ export class BowlingPhysics {
 
   step() {
     this.world.step();
+  }
+
+  /** Swap to a different-sized ball (same weight), e.g. the cherry tomato. */
+  setBallRadius(r: number) {
+    this.ballRadius = r;
+    this.ballCollider.setRadius(r);
+    this.ballCollider.setMass(BALL_MASS);
   }
 
   /** Pin indices (0–9) the ball is touching right now. */

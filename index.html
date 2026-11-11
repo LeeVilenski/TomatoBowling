@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#1b1026" />
+    <meta name="description" content="Tomato Dave's Ten-pin: a 3D bowling game starring a man in a suit with a tomato for a head. Swipe to bowl, hook it into the pocket and make a juicy mess." />
+    <meta property="og:title" content="Tomato Dave's Ten-pin" />
+    <meta property="og:description" content="3D bowling with Tomato Dave. Play solo, pass-and-play with friends, and climb the leaderboard." />
+    <meta property="og:type" content="website" />
     <title>Tomato Dave's Ten-pin</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>" />
   </head>
@@ -30,6 +34,7 @@
     </div>
 
     <div id="speech" aria-live="polite" hidden></div>
+    <div id="toast" role="status" hidden></div>
 
     <div id="power" aria-hidden="true"><div id="power-fill"></div><span>Power</span></div>
 
@@ -49,17 +54,21 @@
       <div class="card">
         <div class="logo">🍅</div>
         <h1>Tomato Dave's<br />Ten-pin</h1>
-        <p class="sub">Stage 6 prototype</p>
+        <p class="sub">Roll a tomato. Make a mess. 🍅</p>
         <div class="buttons">
           <button data-go="single" class="primary">Play</button>
           <button data-go="setup">Pass &amp; Play</button>
           <button data-go="practice">Practice</button>
-          <button data-go="leaderboard">🏆 Leaderboard</button>
+          <div class="button-row">
+            <button data-go="leaderboard">🏆 Leaderboard</button>
+            <button data-go="wardrobe">👔 Wardrobe</button>
+          </div>
         </div>
         <p id="menu-best" class="small"></p>
         <div class="toggles">
           <button class="toggle" data-toggle="music" aria-pressed="true">🎵 Music <b>On</b></button>
           <button class="toggle" data-toggle="sfx" aria-pressed="true">🔊 Sounds <b>On</b></button>
+          <button class="toggle" data-toggle="quality" aria-pressed="true">✨ Graphics <b>High</b></button>
         </div>
       </div>
     </section>
@@ -92,11 +101,13 @@
         <div class="buttons">
           <button id="resume" class="primary">Resume</button>
           <button id="restart">Restart</button>
+          <button id="how-to">How to bowl</button>
           <button data-go="menu" class="ghost">Main menu</button>
         </div>
         <div class="toggles">
           <button class="toggle" data-toggle="music" aria-pressed="true">🎵 Music <b>On</b></button>
           <button class="toggle" data-toggle="sfx" aria-pressed="true">🔊 Sounds <b>On</b></button>
+          <button class="toggle" data-toggle="quality" aria-pressed="true">✨ Graphics <b>High</b></button>
         </div>
       </div>
     </section>
@@ -108,6 +119,38 @@
         <ol id="lb-list" class="results ranked"></ol>
         <p id="lb-best" class="small"></p>
         <div class="buttons"><button data-go="menu" class="ghost">Back</button></div>
+      </div>
+    </section>
+
+    <section id="wardrobe" class="screen" hidden>
+      <div class="card">
+        <h2>👔 Wardrobe</h2>
+        <h3>Tomatoes</h3>
+        <div id="wr-balls" class="chips"></div>
+        <h3>Suits</h3>
+        <div id="wr-suits" class="chips"></div>
+        <p id="wr-hint" class="small"></p>
+        <div class="buttons"><button data-go="menu" class="primary">Done</button></div>
+      </div>
+    </section>
+
+    <section id="tutorial" class="screen" hidden>
+      <div class="card tutorial">
+        <h2>How to bowl</h2>
+        <ol class="steps touch-only">
+          <li><b>Move:</b> drag sideways to slide Dave along the line.</li>
+          <li><b>Aim:</b> start your swipe slanted toward the arrow you want to hit. The yellow line shows where you're aiming.</li>
+          <li><b>Throw:</b> swipe up. A faster flick throws harder.</li>
+          <li><b>Spin:</b> bend the end of your swipe and the ball hooks that way, late in the lane.</li>
+        </ol>
+        <ol class="steps mouse-only">
+          <li><b>Move:</b> move the mouse (or ← →) to slide Dave along the line.</li>
+          <li><b>Aim:</b> scroll the mouse wheel (or A / D). The yellow line shows the path.</li>
+          <li><b>Spin:</b> the Spin buttons (or Q / E) make the ball hook late in the lane.</li>
+          <li><b>Throw:</b> hold the mouse button (or Space) and release when the power meter is where you want it.</li>
+        </ol>
+        <p class="small">Tip: aim just right of the head pin and add a little left spin to find the pocket.</p>
+        <div class="buttons"><button id="tutorial-ok" class="primary">Got it — let's bowl!</button></div>
       </div>
     </section>
 

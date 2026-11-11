@@ -10,6 +10,20 @@ To use your own music instead, add an MP3 at `public/audio/music.mp3` and it wil
 
 **Online leaderboard (stage 6):** after a single-player game you can add your score to an all-time top 50 (🏆 Leaderboard on the menu). The server re-checks every game ball by ball, filters rude names, and limits each IP to 5 submissions an hour. If the leaderboard isn't reachable, the game carries on and says "Leaderboard offline".
 
+**Unlockables (stage 7):** earn new tomato balls and suits for Dave, then pick them in the 👔 Wardrobe:
+
+| Unlock | How |
+|---|---|
+| Cherry Tomato ball (smaller, a bit faster) | Score 100+ |
+| Green Tomato ball | 3 strikes in one game |
+| Heirloom ball | Score 150+ |
+| Golden Tomato ball | A turkey (3 strikes in a row) |
+| Tuxedo | Score 200+ |
+| Pinstripe suit | Pick up a split |
+| Tracksuit | Play 10 games |
+
+Also: a "How to bowl" card on your first game (and in the pause menu), a Graphics High/Low setting for older phones (picked automatically at first), and a phone buzz on strikes where supported.
+
 There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.

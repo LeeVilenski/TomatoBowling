@@ -168,4 +168,5 @@ export function buildAlley(scene: THREE.Scene) {
   fill.position.set(-2, 4, 3);
   fill.target.position.set(0, 0, -8);
   scene.add(fill, fill.target);
+  return { keyLight: key };
 }

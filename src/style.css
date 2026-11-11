@@ -312,7 +312,7 @@ html, body {
 @keyframes pop { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
 
 /* Menu and game-over cards sit low so Dave is visible above them */
-#menu, #gameover { align-items: end; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+#menu, #gameover, #wardrobe { align-items: end; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 #menu .logo { display: none; }
 @media (min-height: 700px) and (min-width: 700px) { #menu, #gameover { padding-bottom: 6vh; } }
 
@@ -344,3 +344,59 @@ html, body {
 #lb-msg.error { color: #ff9a8a; opacity: 1; }
 #lb-msg.good { color: #9be890; opacity: 1; font-weight: 700; }
 #lb-view { width: 100%; height: 42px; font-size: 15px; margin-top: 4px; }
+
+/* Menu button pairs */
+.button-row { display: flex; gap: 10px; }
+.button-row button { flex: 1; }
+.toggles { flex-wrap: wrap; }
+
+/* Wardrobe */
+.card h3 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; text-align: left; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; }
+.card .chip {
+  height: auto;
+  min-height: 62px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  border: 2px solid transparent;
+  background: #3a2350;
+}
+.card .chip.on { border-color: #ff4a3a; background: #4a2e66; }
+.card .chip.locked { opacity: 0.55; }
+.chip .swatch { width: 26px; height: 26px; flex: none; border-radius: 50%; box-shadow: inset -4px -4px 0 rgba(0,0,0,0.2); position: relative; }
+.chip .swatch.suit { border-radius: 8px; }
+.chip.locked .swatch::after { content: '🔒'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; }
+.chip .how { font-size: 10px; font-weight: 400; opacity: 0.85; line-height: 1.2; }
+#wardrobe .card { max-height: 78dvh; padding: 18px 16px; }
+#wardrobe .card h2 { margin-bottom: 0; }
+#wardrobe .buttons { margin-top: 10px; }
+
+/* Tutorial */
+.tutorial .steps { text-align: left; padding-left: 20px; margin: 10px 0; line-height: 1.45; font-size: 15px; }
+.tutorial .steps li { margin-bottom: 8px; }
+.tutorial .steps.touch-only { display: none; }
+@media (hover: none) and (pointer: coarse) { .tutorial .steps.touch-only { display: block; } }
+
+/* Unlock toast */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 48px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 18px;
+  border-radius: 14px;
+  background: #ffd23a;
+  color: #2a1206;
+  font-weight: 800;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  z-index: 20;
+  animation: pop 0.3s cubic-bezier(0.3, 1.6, 0.6, 1);
+}
+.unlocks { margin: 10px 0 0; padding: 10px; border-radius: 12px; background: rgba(255, 210, 58, 0.15); font-size: 14px; }
