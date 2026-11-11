@@ -82,7 +82,7 @@ async function main() {
 
     // Replay from the pinsetter camera
     check(await page.isVisible('#replay-btn'), 'replay button appears after the throw');
-    // The replay camera sits up in the pinsetter, so the masking unit is lifted out of the way
+    // The replay camera peeks out from inside the pinsetter: the masking unit stays put
     const maskingShown = () =>
       page.evaluate(() => {
         let shown = 0;
@@ -94,10 +94,9 @@ async function main() {
     const maskingBefore = await maskingShown();
     await page.evaluate(() => window.__game.controls.replay());
     check((await phase(page)) === 'replay' && (await page.isVisible('#replay-badge')), 'replay starts');
-    check(maskingBefore > 0 && (await maskingShown()) === 0, 'the masking unit is hidden for the pinsetter camera');
+    check(maskingBefore > 0 && (await maskingShown()) === maskingBefore, 'the masking unit stays in place during the replay');
     await waitPhase(page, 'result', 'sweeping', 'aiming');
     check(!(await page.isVisible('#replay-badge')), 'replay finishes and hands back to the game');
-    check((await maskingShown()) === maskingBefore, 'the masking unit is back after the replay');
 
     // On to the next ball
     await page.evaluate(() => window.__game.controls.advance());

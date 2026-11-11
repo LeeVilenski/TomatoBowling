@@ -8,7 +8,7 @@ import { createFaceTextures, type Expression } from './face';
 
 interface Limb {
   fwd: number; // swing forward (+) / back (-)
-  out: number; // raise out to the side
+  out: number; // raise out to the side (which sign is "out" depends on the arm and how raised it is; dave.test.ts checks the hands stay clear of the head)
   bend: number; // elbow/knee bend
 }
 
@@ -469,8 +469,10 @@ export class Dave {
       case 'strike':
         // Jump and pump both fists
         p.jump = t < 1.2 ? 0.14 * Math.abs(Math.sin(t * 5.2)) : 0;
-        p.armR = limb(2.9, 0.35, 1.0 + 0.5 * pump);
-        p.armL = limb(2.9, -0.35, 1.0 - 0.5 * pump);
+        // Arms up in a V so the fists pump beside his head, not through it. (Once an arm
+        // is raised, a *negative* `out` swings it away from the head, for either arm.)
+        p.armR = limb(2.8, -0.5, 0.6 + 0.5 * pump);
+        p.armL = limb(2.8, -0.5, 0.6 - 0.5 * pump);
         p.nod = -0.25;
         p.legL = limb(0.15, 0, -0.3 * Math.abs(pump));
         p.legR = limb(0.15, 0, -0.3 * Math.abs(pump));
@@ -483,7 +485,7 @@ export class Dave {
         break;
       case 'good':
         // One-armed fist pump
-        p.armR = limb(2.6, 0.3, 1.3 + 0.4 * pump);
+        p.armR = limb(2.6, -0.45, 0.8 + 0.4 * pump);
         p.armL = limb(0.2, -0.2, 0.3);
         p.drop = 0.04;
         break;
@@ -507,9 +509,10 @@ export class Dave {
         break;
       case 'split':
         // Scratch his tomato
-        p.armR = limb(1.7, 1.25, 1.9 + 0.15 * pump);
+        // (hand at the side of his head, where you can see it; head tipped away from it)
+        p.armR = limb(1.7, 1.45, 1.7 + 0.15 * pump);
         p.armL = limb(0.3, -0.2, 0.8);
-        p.tilt = -0.2;
+        p.tilt = 0.2;
         p.nod = -0.1;
         break;
     }
