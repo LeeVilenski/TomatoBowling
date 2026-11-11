@@ -343,3 +343,4 @@ html, body {
 #submit-form .player-input button { width: auto; padding: 0 16px; font-size: 16px; }
 #lb-msg.error { color: #ff9a8a; opacity: 1; }
 #lb-msg.good { color: #9be890; opacity: 1; font-weight: 700; }
+#lb-view { width: 100%; height: 42px; font-size: 15px; margin-top: 4px; }

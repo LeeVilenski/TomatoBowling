@@ -355,6 +355,7 @@ async function start() {
     submitBtn.textContent = 'Submit';
     nameInput.value = storage.nickname();
     setLbMsg('');
+    $('lb-view').hidden = true;
   }
 
   form.addEventListener('submit', async (e) => {
@@ -375,6 +376,7 @@ async function start() {
       pending = null;
       nameInput.disabled = true;
       submitBtn.textContent = 'Sent ✓';
+      $('lb-view').hidden = false;
       setLbMsg(res.rank <= 50 ? `You're #${res.rank} on the leaderboard! 🍅` : `Submitted! You're #${res.rank} — keep bowling to reach the top 50.`, 'good');
     } catch (err) {
       submitBtn.disabled = false;
@@ -382,6 +384,8 @@ async function start() {
       setLbMsg(err instanceof LeaderboardError ? err.message : 'Something went wrong. Try again.', 'error');
     }
   });
+
+  $('lb-view').addEventListener('click', () => void openLeaderboard());
 
   async function openLeaderboard() {
     showScreen('leaderboard');
