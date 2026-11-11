@@ -45,7 +45,11 @@ export async function fetchTopScores(): Promise<LeaderboardEntry[]> {
   return body.scores;
 }
 
-export async function submitScore(name: string, score: number, rolls: number[]): Promise<{ rank: number; entry: LeaderboardEntry }> {
+export async function submitScore(
+  name: string,
+  score: number,
+  rolls: number[],
+): Promise<{ rank: number; entry: LeaderboardEntry; scores: LeaderboardEntry[] }> {
   return call({
     method: 'POST',
     headers: { 'content-type': 'application/json' },

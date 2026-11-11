@@ -22,6 +22,7 @@
     "src",
     "server",
     "api",
-    "scripts"
+    "scripts",
+    "vite.config.ts"
   ]
 }

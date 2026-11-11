@@ -10,9 +10,11 @@
     "typecheck": "tsc --noEmit",
     "check:physics": "tsx scripts/physics-check.ts",
     "test": "vitest run",
-    "check:api": "tsx scripts/api-check.ts"
+    "check:api": "tsx scripts/api-check.ts",
+    "check:browser": "tsx scripts/browser-check.ts"
   },
   "dependencies": {
+    "@dimforge/rapier3d": "^0.21.0",
     "@dimforge/rapier3d-compat": "^0.21.0",
     "@upstash/redis": "^1.41.0",
     "obscenity": "^0.4.6",
@@ -21,9 +23,11 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/three": "^0.187.0",
+    "playwright": "1.63.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^8.3.8",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^3.2.4"
   }
 }

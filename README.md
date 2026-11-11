@@ -33,6 +33,8 @@ Also: a "How to bowl" card on your first game (and in the pause menu), a Graphic
 | Disco Inferno | Mirror ball, sweeping spotlights, flashing dance floor | "Disco Dave" (disco) |
 | Rooftop at Sunset | Open sky, city skyline, string lights | "Bossa Marinara" (bossa nova) |
 
+**Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera tucked inside the pinsetter. It starts zoomed in on the ball as it leaves Dave's hand, opens up as the ball arrives, and drops into slow motion for the impact, juice and all. Tap to skip.
+
 After each throw the tomato rolls home along a ball return chute between the lanes. And the tomato isn't perfectly round: when its stem rolls under, it can give the ball a small hop at a random point down the lane.
 
 There are three modes:
@@ -52,7 +54,23 @@ npm run build          # type-check + production build into dist/
 npm test               # unit tests
 npm run check:physics  # simulate test throws without a browser
 npm run check:api      # run the leaderboard API against a stand-in database
+npm run check:browser  # play a few throws of the production build in headless Chromium (run `npm run build` first)
 ```
+
+Every push runs all of these on GitHub (`.github/workflows/checks.yml`).
+
+### Where things live
+
+| Folder | What's in it |
+|---|---|
+| `src/game/` | Rules and simulation, no graphics: scoring, match flow, physics, pinsetter, replay recording, unlocks, Dave's reactions |
+| `src/scene/` | Three.js: the alley, venues, Dave, models, juice, the camera rig |
+| `src/ui/` | Overlay screens: scorecard, leaderboard, Wardrobe, player setup |
+| `src/input/`, `src/audio/`, `src/net/`, `src/save/` | Controls, sound and music, the leaderboard client, saved settings |
+| `src/main.ts` | Wires it all together and runs the throw-by-throw game loop |
+| `api/`, `server/` | The leaderboard Vercel function and its rules |
+
+The browser build loads the physics engine's WebAssembly as its own file (`vite.config.ts` swaps `@dimforge/rapier3d-compat` for `src/game/rapierWeb.ts`), so it downloads and compiles while the scene is being built. Node scripts keep using the compat package.
 
 Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view).
 
@@ -74,6 +92,7 @@ Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`
 | Spin | Spin ◀ ▶ buttons | Q / E |
 | Throw | Hold the button, release to throw | Hold Space, release to throw |
 | Fast forward a rolling ball (3×) | ⏩ button | F |
+| Replay the last throw | 🎥 Replay button | V |
 | Skip the wait after a throw | Click | Space |
 | Fresh rack (practice) | | R |
 | Pause | ❚❚ button | Esc or P |

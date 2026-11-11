@@ -4,6 +4,14 @@ import { Redis } from '@upstash/redis';
 import { getScores, KEEP, postScore, type Entry, type LeaderboardStore } from '../server/leaderboard.js';
 
 const KEY = 'tomato-dave:scores';
+
+/**
+ * Redis orders equal scores by member text, which would put newer entries first. So each
+ * stored score carries a tiny time-based tie-breaker: score - milliseconds/1e13. Earlier entries
+ * lose less, so they stay ahead; the shown score is rounded back to a whole number. (Entries
+ * stored before this have no tie-breaker, and they are older, so they rank ahead too.)
+ */
+export const storedScore = (score: number, at: Date) => score - at.getTime() / 1e13;
 const MAX_BODY = 2000; // bytes; a full game is well under this
 
 class RedisStore implements LeaderboardStore {
@@ -14,7 +22,7 @@ class RedisStore implements LeaderboardStore {
     const out: Entry[] = [];
     for (let i = 0; i < raw.length; i += 2) {
       const [date, name] = String(raw[i]).split('|');
-      out.push({ name, date, score: Number(raw[i + 1]) });
+      out.push({ name, date, score: Math.round(Number(raw[i + 1])) });
     }
     return out;
   }
@@ -22,7 +30,7 @@ class RedisStore implements LeaderboardStore {
   async add(entry: Entry) {
     // Members must be unique, so each one carries a random suffix
     const member = `${entry.date}|${entry.name}|${Math.random().toString(36).slice(2, 10)}`;
-    await this.redis.zadd(KEY, { score: entry.score, member });
+    await this.redis.zadd(KEY, { score: storedScore(entry.score, new Date()), member });
     const rank = await this.redis.zrevrank(KEY, member);
     await this.redis.zremrangebyrank(KEY, 0, -(KEEP + 1));
     return (rank ?? 0) + 1;

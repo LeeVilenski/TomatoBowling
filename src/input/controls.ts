@@ -23,6 +23,8 @@ export interface ControlTarget {
   pause(): void;
   /** Toggle fast forward while the ball is rolling. */
   fastForward(): void;
+  /** Watch the last throw again from the pinsetter camera. */
+  replay(): void;
 }
 
 const DRAG_DECIDE_PX = 12;
@@ -30,7 +32,7 @@ const DRAG_DECIDE_PX = 12;
 /**
  * Touch/pen: drag sideways to move, swipe up to throw (curve the swipe for spin).
  * Mouse: move to set position, wheel to aim, hold the button to charge power, release to throw.
- * Keyboard: arrows move, A/D aim, Q/E spin, hold Space to charge.
+ * Keyboard: arrows move, A/D aim, Q/E spin, hold Space to charge, V to replay the last throw.
  */
 export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasElement, game: ControlTarget) {
   const tctx = trail.getContext('2d')!;
@@ -195,6 +197,9 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
         break;
       case 'f':
         if (first) game.fastForward();
+        break;
+      case 'v':
+        if (first) game.replay();
         break;
       default:
         return;

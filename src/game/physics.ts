@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import type R from '@dimforge/rapier3d-compat';
 import {
   APPROACH_START_Z,
   BALL_MASS,
@@ -11,17 +11,23 @@ import {
   PIN_PROFILE,
   PIT_DEPTH,
   PIT_END_Z,
+  PHYSICS_DT,
   gutterPlates,
   pinSpots,
 } from './dimensions';
 
-export const PHYSICS_DT = 1 / 120;
+export { PHYSICS_DT };
 
 const GUTTER_HALF = GUTTER_WIDTH / 2;
 const PIN_FOOT = 0.018; // half-width of the square foot (fits inside the round base)
 const PIN_FOOT_H = 0.004;
 // Real lanes are oiled for the first ~12 m, so the ball skids there and then grips
 // the dry back end. That grip is what turns spin into a late hook.
+// The physics engine is loaded on demand (BowlingPhysics.create), so its download and
+// compile can run alongside building the 3D scene. The web build swaps in the version that
+// streams its WebAssembly as a separate file (see vite.config.ts).
+let RAPIER: typeof R;
+
 export const OIL_END_Z = -12.2;
 const OIL_FRICTION = 0.03;
 const DRY_FRICTION = 0.2;
@@ -47,11 +53,11 @@ export interface ThrowParams {
 }
 
 export class BowlingPhysics {
-  readonly world: RAPIER.World;
-  readonly ball: RAPIER.RigidBody;
-  readonly pins: RAPIER.RigidBody[] = [];
-  private ballCollider!: RAPIER.Collider;
-  private lane!: RAPIER.Collider;
+  readonly world: R.World;
+  readonly ball: R.RigidBody;
+  readonly pins: R.RigidBody[] = [];
+  private ballCollider!: R.Collider;
+  private lane!: R.Collider;
   ballRadius = BALL_RADIUS;
   /** Random source (swappable for tests). */
   rng: () => number = Math.random;
@@ -117,6 +123,7 @@ export class BowlingPhysics {
   }
 
   static async create(): Promise<BowlingPhysics> {
+    RAPIER ??= (await import('@dimforge/rapier3d-compat')).default;
     await RAPIER.init();
     return new BowlingPhysics();
   }
@@ -337,7 +344,7 @@ export class BowlingPhysics {
 
   /** True once nothing is moving fast enough to change the result. */
   isSettled(): boolean {
-    const slow = (b: RAPIER.RigidBody) => {
+    const slow = (b: R.RigidBody) => {
       const v = b.linvel();
       const w = b.angvel();
       return v.x * v.x + v.y * v.y + v.z * v.z < 0.01 && w.x * w.x + w.y * w.y + w.z * w.z < 0.05;

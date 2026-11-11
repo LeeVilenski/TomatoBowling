@@ -5,6 +5,25 @@ const MAX_SPLATS = 36;
 const GRAVITY = 9.8;
 const COLOURS = ['#e0261b', '#ff4a2a', '#c41a12', '#ff7a3a'].map((c) => new THREE.Color(c));
 
+/** A round droplet with a glossy highlight, so drops aren't square when seen up close. */
+function dropTexture() {
+  const size = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(size * 0.38, size * 0.36, 1, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.25, '#f2f2f2');
+  grad.addColorStop(1, '#bbbbbb');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+  g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** Tomato juice: droplets that fly on impact, then land as splats that fade. */
 export class Juice {
   private positions = new Float32Array(MAX_DROPS * 3);
@@ -22,12 +41,12 @@ export class Juice {
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.colours, 3));
     const points = new THREE.Points(
       this.geo,
-      new THREE.PointsMaterial({ size: 0.032, vertexColors: true, sizeAttenuation: true, depthWrite: false }),
+      new THREE.PointsMaterial({ size: 0.032, vertexColors: true, sizeAttenuation: true, depthWrite: false, map: dropTexture(), alphaTest: 0.5 }),
     );
     points.frustumCulled = false;
     scene.add(points);
 
-    const splatGeo = new THREE.CircleGeometry(1, 10);
+    const splatGeo = new THREE.CircleGeometry(1, 28);
     splatGeo.rotateX(-Math.PI / 2);
     for (let i = 0; i < MAX_SPLATS; i++) {
       const mesh = new THREE.Mesh(
@@ -84,6 +103,17 @@ export class Juice {
     s.mesh.scale.setScalar(size);
     s.mesh.visible = true;
     s.life = 3.5;
+  }
+
+  /** Wipe every droplet and splat (e.g. before a replay re-splashes the same throw). */
+  clear() {
+    this.life.fill(0);
+    this.positions.fill(-100);
+    this.geo.attributes.position.needsUpdate = true;
+    for (const s of this.splats) {
+      s.life = 0;
+      s.mesh.visible = false;
+    }
   }
 
   update(dt: number) {

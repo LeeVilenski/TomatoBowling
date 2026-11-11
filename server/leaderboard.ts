@@ -80,7 +80,9 @@ export async function postScore(store: LeaderboardStore, body: unknown, ip: stri
 
   const entry: Entry = { name: name.name, score: game.score, date: now.toISOString().slice(0, 10) };
   const rank = await store.add(entry);
-  return { status: 201, body: { rank, entry } };
+  // The fresh top list comes back too, so the game can show it straight away
+  // (GET responses are cached for a few seconds and might not include this entry yet)
+  return { status: 201, body: { rank, entry, scores: await store.top(TOP_N) } };
 }
 
 /** Simple in-memory store for tests and local development. */
