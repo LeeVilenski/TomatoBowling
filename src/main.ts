@@ -81,10 +81,12 @@ async function start() {
 
   const setStatus = (text: string) => (status.textContent = text);
 
-  function updateReadout() {
-    const spinText = spin === 0 ? 'none' : `${spin < 0 ? '◀' : '▶'} ${Math.round(Math.abs(spin) * 100)}%`;
-    readout.textContent = `Ball ${ballInRack} · Spin ${spinText}`;
-    spinValue.textContent = spinText;
+  const spinLabel = (v: number) => (Math.abs(v) < 0.005 ? 'none' : `${v < 0 ? '◀' : '▶'} ${Math.round(Math.abs(v) * 100)}%`);
+
+  /** `thrownSpin` shows the spin of a swipe throw instead of the keyboard/mouse setting. */
+  function updateReadout(thrownSpin?: number) {
+    readout.textContent = `Ball ${ballInRack} · Spin ${spinLabel(thrownSpin ?? spin)}`;
+    spinValue.textContent = spinLabel(spin);
   }
 
   function showPower(p: number, visible: boolean) {
@@ -99,7 +101,8 @@ async function start() {
     lastThrow = { speed, spin: spinValue, knocked: 0 };
     phase = 'rolling';
     settleTime = 0;
-    setStatus(`Rolling… ${speed.toFixed(1)} m/s`);
+    setStatus(`Rolling… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
+    updateReadout(spinValue);
   }
 
   function finishThrow() {

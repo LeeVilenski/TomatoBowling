@@ -28,6 +28,7 @@ const DRY_FRICTION = 0.2;
 const APPROACH_FRICTION = 0.3;
 // Full spin = this many rad/s of side rotation (~160 rpm of axis rotation).
 const MAX_SPIN = 17;
+const SPIN_SPEED_SCALING = 3;
 const PIN_FRICTION = 0.35;
 const PIN_RESTITUTION = 0.45;
 const BALL_RESTITUTION = 0.2;
@@ -181,7 +182,9 @@ export class BowlingPhysics {
     this.ball.setLinvel({ x: dx * speed, y: 0, z: dz * speed }, true);
     // Side spin = rotation around the direction of travel. Once the ball reaches the
     // dry boards, friction turns it into sideways movement (positive spin hooks right).
-    const w = spin * MAX_SPIN;
+    // Faster throws spend less time on the dry boards, so they get more revs to compensate.
+    // That keeps full spin worth a similar, visible hook at any speed.
+    const w = spin * MAX_SPIN * Math.pow(speed / 8, SPIN_SPEED_SCALING);
     this.ball.setAngvel({ x: dx * w, y: 0, z: dz * w }, true);
   }
 

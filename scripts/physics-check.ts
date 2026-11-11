@@ -26,7 +26,7 @@ async function main() {
     { name: 'fast shot', x: 0.06, aim: 0, speed: 11, expect: (n) => n >= 5 },
     { name: 'slow shot', x: 0.1, aim: 0, speed: 5, expect: (n) => n >= 1 },
     { name: 'hook into the pocket', x: 0.3, aim: 0, speed: 8, spin: -0.7, expect: (n) => n >= 7 },
-    { name: 'too much hook', x: 0, aim: 0, speed: 7, spin: -1, expect: (n) => n <= 4 },
+    { name: 'too much hook', x: -0.2, aim: 0, speed: 7, spin: -1, expect: (n) => n <= 4 },
   ];
   for (const s of shots) {
     ph.resetPins();

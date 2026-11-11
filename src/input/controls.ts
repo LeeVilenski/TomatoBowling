@@ -87,7 +87,10 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
       return;
     }
     if (!touch || e.pointerId !== touch.id) return;
-    const pt = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    // Phones often bundle several touch samples into one event; use them all for a smoother path
+    const samples = e.getCoalescedEvents?.() ?? [];
+    const pts = (samples.length ? samples : [e]).map((ev) => ({ x: ev.clientX, y: ev.clientY, t: ev.timeStamp }));
+    const pt = pts[pts.length - 1];
     if (touch.mode === 'undecided') {
       const start = touch.points[0];
       const dx = pt.x - start.x;
@@ -101,7 +104,7 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
       game.moveBy(((pt.x - touch.lastX) / window.innerWidth) * 2.4);
       touch.lastX = pt.x;
     } else {
-      touch.points.push(pt);
+      touch.points.push(...pts);
     }
   });
 

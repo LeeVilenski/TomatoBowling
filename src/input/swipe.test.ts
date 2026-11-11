@@ -40,10 +40,28 @@ describe('analyzeSwipe', () => {
     expect(right.spin).toBe(0);
   });
 
-  it('a swipe that curves right at the end spins right', () => {
+  it('a swipe that curves right at the end spins right without changing the aim much', () => {
     const r = analyzeSwipe(swipe((s) => [200 + 150 * s * s, 700 - s * 400], 250), H)!;
     expect(r.spin).toBeGreaterThan(0.3);
+    expect(Math.abs(r.aim)).toBeLessThan(0.15);
     const l = analyzeSwipe(swipe((s) => [200 - 150 * s * s, 700 - s * 400], 250), H)!;
     expect(l.spin).toBeLessThan(-0.3);
+  });
+
+  it('a gentle thumb arc still gives noticeable spin', () => {
+    // Bends ~25° over the swipe, like a natural thumb flick
+    const r = analyzeSwipe(swipe((s) => [200 + 60 * s * s, 700 - s * 350], 200), H)!;
+    expect(r.spin).toBeGreaterThan(0.25);
+  });
+
+  it('a slightly wonky straight swipe stays straight', () => {
+    const r = analyzeSwipe(swipe((s) => [200 + 8 * s, 700 - s * 400], 250), H)!;
+    expect(r.aim).toBe(0);
+    expect(r.spin).toBe(0);
+  });
+
+  it('works with only a few points (coalesced touch events)', () => {
+    const r = analyzeSwipe(swipe((s) => [200 + 150 * s * s, 700 - s * 400], 150, 4), H)!;
+    expect(r.spin).toBeGreaterThan(0.3);
   });
 });
