@@ -46,6 +46,15 @@ export function neonSign(title: string, sub: string, titleColour: string, subCol
   return sign;
 }
 
+/**
+ * Marks parts of the masking unit (the panel and sign above the pins). The replay camera
+ * sits up inside the pinsetter, so these are hidden while it plays.
+ */
+export function maskingPart<T extends THREE.Object3D>(o: T): T {
+  o.userData.masking = true;
+  return o;
+}
+
 /** Front panel of the masking unit above the pins. */
 export function maskingPanel(text: string, top: string, bottom: string, stripe: string, emblem: string) {
   const tex = canvasTexture(1024, 256, (g) => {
@@ -125,7 +134,7 @@ export function buildDecor(scene: THREE.Scene) {
       new THREE.MeshStandardMaterial({ color: '#8e1d14', roughness: 0.7 }),
     );
     mask.position.set(side * NEIGHBOUR_X, 0.95, DECK_END_Z + 0.4);
-    scene.add(mask);
+    scene.add(maskingPart(mask));
   }
 
   // Light on Dave's front, for the reaction shots from down the lane

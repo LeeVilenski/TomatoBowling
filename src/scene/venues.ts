@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { TrackId } from '../audio/music';
 import { DECK_END_Z, OUTER_HALF, PIT_END_Z } from '../game/dimensions';
-import { canvasTexture, carpet, maskingPanel, neonSign } from './decor';
+import { canvasTexture, carpet, maskingPanel, maskingPart, neonSign } from './decor';
 
 // The places Tomato Dave can bowl. The lanes are the same everywhere; each venue adds its
 // own walls, ceiling, lights, signs, music and a few moving effects.
@@ -80,7 +80,7 @@ function signage(g: THREE.Group, title: string, sub: string, tc: string, sc: str
   sign.position.set(0, 1.72, DECK_END_Z + 0.32);
   const panel = maskingPanel(lane, top, bottom, stripe, emblem);
   panel.position.set(0, 0.95, DECK_END_Z + 0.445);
-  g.add(sign, panel);
+  g.add(maskingPart(sign), maskingPart(panel));
 }
 
 /** Glowing strips along both edges of our lane's capping. */

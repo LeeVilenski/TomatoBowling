@@ -10,6 +10,7 @@ import {
   PIT_END_Z,
   gutterPlates,
 } from '../game/dimensions';
+import { maskingPart } from './decor';
 
 const BOARDS = 39;
 
@@ -150,9 +151,10 @@ export function buildAlley(scene: THREE.Scene) {
 
   // Masking unit above the pins: a red panel with a tomato-ish stripe
   const maskMat = new THREE.MeshStandardMaterial({ color: '#c8281e', roughness: 0.6, emissive: '#3a0805' });
-  scene.add(box(OUTER_HALF * 2 + 0.6, 0.55, 0.08, maskMat, 0, 0.95, DECK_END_Z + 0.4));
+  scene.add(maskingPart(box(OUTER_HALF * 2 + 0.6, 0.55, 0.08, maskMat, 0, 0.95, DECK_END_Z + 0.4)));
   const stripeMat = new THREE.MeshStandardMaterial({ color: '#3fae3a', emissive: '#0c2a0a' });
-  scene.add(box(OUTER_HALF * 2 + 0.6, 0.06, 0.09, stripeMat, 0, 0.72, DECK_END_Z + 0.4));
+  scene.add(maskingPart(box(OUTER_HALF * 2 + 0.6, 0.06, 0.09, stripeMat, 0, 0.72, DECK_END_Z + 0.4)));
+  buildPinsetterHood(scene);
 
 
   // Lighting
@@ -179,4 +181,42 @@ export function buildAlley(scene: THREE.Scene) {
   fill.target.position.set(0, 0, -8);
   scene.add(fill, fill.target);
   return { keyLight: key, hemi, fill };
+}
+
+/** Underside of the pinsetter hood above the pins (the replay camera hangs just below it). */
+export const HOOD_CEILING_Y = 1.2;
+/** Front of the hood: the back of the masking unit. */
+const HOOD_FRONT_Z = DECK_END_Z + 0.36;
+const HOOD_BACK_Z = PIT_END_Z - 0.1;
+
+/**
+ * The enclosure over the pin deck: a ceiling running from the masking unit back to the
+ * wall, closed in at the sides, with a strip of deck lights and the pinsetter's rails.
+ * It sits behind the masking panel, so from the approach it's barely seen; it's what
+ * frames the replay camera's view.
+ */
+function buildPinsetterHood(scene: THREE.Scene) {
+  const len = HOOD_FRONT_Z - HOOD_BACK_Z;
+  const midZ = (HOOD_FRONT_Z + HOOD_BACK_Z) / 2;
+  const halfW = OUTER_HALF + 0.06;
+  const shell = new THREE.MeshStandardMaterial({ color: '#17111f', roughness: 0.85 });
+  const metal = new THREE.MeshStandardMaterial({ color: '#4a4d57', roughness: 0.4, metalness: 0.7 });
+  const add = (m: THREE.Mesh) => {
+    m.castShadow = false; // don't throw shade on the pins
+    scene.add(m);
+  };
+
+  // Ceiling, and side panels from the top of the kickbacks up to it
+  add(box(halfW * 2 + 0.12, 0.04, len, shell, 0, HOOD_CEILING_Y + 0.02, midZ));
+  const sideH = HOOD_CEILING_Y - 0.7;
+  for (const side of [-1, 1]) add(box(0.06, sideH, len, shell, side * (OUTER_HALF + 0.03), 0.7 + sideH / 2, midZ));
+  // Back panel, from the top of the cushion up to the ceiling
+  add(box(halfW * 2 + 0.12, HOOD_CEILING_Y - 0.6, 0.04, shell, 0, (HOOD_CEILING_Y + 0.6) / 2, HOOD_BACK_Z));
+
+  // Deck lights: a glowing strip across the front, just behind the masking unit
+  const glow = new THREE.MeshBasicMaterial({ color: '#fff1d6', toneMapped: false });
+  add(box(halfW * 2 - 0.2, 0.015, 0.06, glow, 0, HOOD_CEILING_Y - 0.01, HOOD_FRONT_Z - 0.08));
+  // Pinsetter rails running front to back, and a cross beam
+  for (const side of [-1, 1]) add(box(0.05, 0.05, len - 0.1, metal, side * (halfW - 0.18), HOOD_CEILING_Y - 0.035, midZ));
+  add(box(halfW * 2 - 0.3, 0.06, 0.06, metal, 0, HOOD_CEILING_Y - 0.04, HOOD_BACK_Z + 0.45));
 }

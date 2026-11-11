@@ -1,6 +1,7 @@
 // Where the camera sits for each moment of the game, and how it moves between shots.
 import * as THREE from 'three';
-import { DECK_END_Z, HEAD_PIN_Z } from '../game/dimensions';
+import { HEAD_PIN_Z, PIT_END_Z } from '../game/dimensions';
+import { HOOD_CEILING_Y } from './alley';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -28,11 +29,17 @@ export interface ShotInput {
   ball: { x: number; y: number; z: number };
 }
 
-// Replay camera: tucked under the masking unit, just above the back row of pins
-const REPLAY_POS = new THREE.Vector3(0.06, 0.6, DECK_END_Z + 0.25);
-const DECK_CENTRE = new THREE.Vector3(0, 0.12, HEAD_PIN_Z - 0.35);
-/** How much of the scene (metres, top to bottom) the replay camera keeps in view around the ball. */
-const REPLAY_FRAMING = 1.7;
+// Replay camera: up in the pinsetter hood above the pins, just under its ceiling and back
+// towards the wall, looking out over the deck and up the lane. The underside of the hood
+// frames the top of the shot. (The masking panel at the front is hidden while it plays.)
+const REPLAY_POS = new THREE.Vector3(0, HOOD_CEILING_Y - 0.1, PIT_END_Z + 0.28);
+/** Where it looks while the ball is still coming: up the lane, with every pin in view. */
+const REPLAY_LOOK_LANE = new THREE.Vector3(0, 0, HEAD_PIN_Z + 0.9);
+/** Where it settles as the ball arrives: the deck and the pit, where the pins fly. */
+const REPLAY_LOOK_DECK = new THREE.Vector3(0, 0, HEAD_PIN_Z - 0.3);
+const REPLAY_FOV = 64;
+/** Narrow screens need a wider view to fit the deck across. */
+const REPLAY_FOV_PORTRAIT = 92;
 
 export class CameraRig {
   private pos = new THREE.Vector3(0.35, 1.5, 2.4);
@@ -42,7 +49,6 @@ export class CameraRig {
   private lastShot: Shot | null = null;
   private baseFov = 55;
   private shake = 0;
-  private ballPos = new THREE.Vector3();
 
   constructor(private camera: THREE.PerspectiveCamera) {}
 
@@ -98,16 +104,13 @@ export class CameraRig {
         this.wantLook.set(0, 0.15, HEAD_PIN_Z - 0.4);
         break;
       case 'replay': {
-        // A fixed camera that pans and zooms like a broadcast camera: tight on the ball while
-        // it's far away, opening up to take in the whole deck as it arrives.
+        // A fixed camera that tilts down onto the deck as the ball arrives, and pushes in a touch
         this.wantPos.copy(REPLAY_POS);
-        const dist = Math.max(0.5, REPLAY_POS.distanceTo(this.ballPos.set(ball.x, ball.y, ball.z)));
-        const near = clamp((HEAD_PIN_Z + 3.5 - ball.z) / 3.5, 0, 1); // 0 far away → 1 at the pins
+        const near = clamp((HEAD_PIN_Z + 6 - ball.z) / 6, 0, 1); // 0 far away → 1 at the pins
         const k = near * near * (3 - 2 * near);
-        this.wantLook.set(ball.x, ball.y, ball.z).lerp(DECK_CENTRE, k);
-        // Keep the ball's surroundings in frame, but never wider than the normal view
-        const zoom = THREE.MathUtils.radToDeg(2 * Math.atan(REPLAY_FRAMING / 2 / dist));
-        fov = clamp(THREE.MathUtils.lerp(zoom, 72, k), 6, 72);
+        this.wantLook.copy(REPLAY_LOOK_LANE).lerp(REPLAY_LOOK_DECK, k);
+        // (landscape pushes in a touch; portrait is already tight across, so it stays wide)
+        fov = portrait ? REPLAY_FOV_PORTRAIT : REPLAY_FOV - 8 * k;
         break;
       }
     }
