@@ -39,10 +39,10 @@ export class ReturnChute {
 
     // Hood the ball pops out of, and a short rack where it waits
     const body = new THREE.MeshStandardMaterial({ color: '#3a2350', roughness: 0.45 });
-    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.34, 28, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({ color: '#e0261b', roughness: 0.3, metalness: 0.2 }));
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.3, 28, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({ color: '#e0261b', roughness: 0.3, metalness: 0.2 }));
     hood.rotation.z = Math.PI / 2;
     hood.rotation.y = Math.PI / 2;
-    hood.position.set(X, 0.32, HOOD_Z + 0.12);
+    hood.position.set(X, 0.3, HOOD_Z + 0.12);
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.5), body);
     base.position.set(X, 0.15, HOOD_Z + 0.12);
     const rackBase = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, RACK_END_Z - HOOD_Z - 0.3), body);

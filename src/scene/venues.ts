@@ -167,13 +167,12 @@ function classic(): Built {
   for (const x of [0, -NEIGHBOUR_X, NEIGHBOUR_X]) {
     const mon = new THREE.Group();
     mon.add(boxAt(0.95, 0.56, 0.06, std('#111'), 0, 0, 0));
+    // Screen faces the bowler (towards +z)
     const face = plane(0.9, 0.5, new THREE.MeshBasicMaterial({ map: screen, toneMapped: false }), [0, 0, 0.032]);
-    face.rotation.y = Math.PI;
-    face.position.z = -0.032;
     mon.add(face);
-    mon.add(boxAt(0.03, CEIL_Y - 2.95, 0.03, std('#222'), 0, (CEIL_Y - 2.68) / 2 + 0.28, 0));
-    mon.position.set(x, 2.68, -1.2);
-    mon.rotation.x = -0.18;
+    mon.add(boxAt(0.03, CEIL_Y - 3.3, 0.03, std('#222'), 0, (CEIL_Y - 3.3) / 2 + 0.28, 0));
+    mon.position.set(x, 3.3, -1.2);
+    mon.rotation.x = 0.18; // tilted down towards the bowler
     g.add(mon);
   }
   // Bench behind the bowler

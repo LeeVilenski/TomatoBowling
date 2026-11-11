@@ -820,12 +820,13 @@ async function start() {
       wantLook.set(davePos.x, portrait ? 1.15 : 1.4, davePos.z);
     } else if (phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping') {
       // Over Dave's right shoulder
+      // (far enough back that Dave looks his real size next to the lane)
       if (portrait) {
-        wantPos.set(dx + 0.7, 2.15, DAVE_Z + 2.3);
-        wantLook.set(aimX * 0.4, 0, -9.5);
+        wantPos.set(dx + 0.55, 2.5, DAVE_Z + 4.4);
+        wantLook.set(aimX * 0.4, 0.15, -11);
       } else {
-        wantPos.set(dx + 0.75, 1.75, DAVE_Z + 1.7);
-        wantLook.set(aimX * 0.4, 0, -14);
+        wantPos.set(dx + 0.6, 2.15, DAVE_Z + 3.7);
+        wantLook.set(aimX * 0.4, 0.05, -14);
       }
     } else if (phase === 'rolling' || phase === 'settling') {
       const z = Math.max(b.z + 3.2, HEAD_PIN_Z + 4.2);
@@ -1017,6 +1018,9 @@ async function start() {
       return phase;
     },
     sound,
+    get aim() {
+      return aim;
+    },
     get mode() {
       return mode;
     },
