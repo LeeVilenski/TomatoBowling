@@ -5,7 +5,7 @@ import { HEAD_PIN_Z } from '../src/game/dimensions';
 async function main() {
   const ph = await BowlingPhysics.create();
   for (const pin of ph.pins.keys()) ph.removePin(pin);
-  for (const speed of [5, 6, 8, 10, 11]) {
+  for (const speed of [3, 4, 5, 6, 8]) {
     for (const spin of [-1, -0.5, 0, 0.5, 1]) {
       ph.holdBall(0);
       ph.step();

@@ -17,7 +17,7 @@ const BALL_START_Z = -0.3;
 // Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
-const MIN_SPEED = 5;
+const MIN_SPEED = 3; // a gentle roll (~7 mph)
 const MAX_SPEED = 11;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
 const RESULT_PAUSE = 2.2; // seconds before the pinsetter runs on its own
@@ -138,6 +138,7 @@ async function start() {
     setStatus(mode === 'clear' ? 'Clearing the deadwood…' : 'Setting a fresh rack…');
     pinsetter.start(mode, () => {
       ballInRack = mode === 'clear' ? 2 : 1;
+      aim = 0; // each ball starts aimed straight down the lane
       phase = 'aiming';
       setStatus(ballInRack === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
       updateReadout();
