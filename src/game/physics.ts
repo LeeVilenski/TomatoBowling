@@ -10,7 +10,6 @@ import {
   PIN_MASS,
   PIN_PROFILE,
   PIT_DEPTH,
-  HEAD_PIN_Z,
   PIT_END_Z,
   gutterPlates,
   pinSpots,
@@ -29,6 +28,9 @@ const DRY_FRICTION = 0.2;
 const APPROACH_FRICTION = 0.3;
 // Full spin = this many rad/s of side rotation (~160 rpm of axis rotation).
 const MAX_SPIN = 17;
+// Last point down the lane where the stem can make the ball hop. Late, big hops can sail
+// right over the pins, and that's part of the fun.
+const HOP_LAST_Z = -16.5;
 const SPIN_SPEED_SCALING = 3;
 const PIN_FRICTION = 0.35;
 const PIN_RESTITUTION = 0.45;
@@ -270,16 +272,17 @@ export class BowlingPhysics {
   private stemCheck() {
     if (this.bumpCount > 0 || this.ball.bodyType() !== RAPIER.RigidBodyType.Dynamic) return;
     const p = this.ball.translation();
-    const onLane = p.y < this.ballRadius + 0.004 && Math.abs(p.x) < LANE_HALF - this.ballRadius && p.z < -1.5 && p.z > HEAD_PIN_Z + 1.2;
+    // Anywhere from 3 m out until just before the pins
+    const onLane = p.y < this.ballRadius + 0.004 && Math.abs(p.x) < LANE_HALF - this.ballRadius && p.z < -3 && p.z > HOP_LAST_Z;
     if (!onLane) return;
     // Y component of the ball's local "up" (where the stem points)
     const q = this.ball.rotation();
     const stemY = 1 - 2 * (q.x * q.x + q.z * q.z);
     const down = stemY < -0.9;
-    if (down && !this.stemWasDown && this.rng() < 0.3) {
+    if (down && !this.stemWasDown && this.rng() < 0.4) {
       const v = this.ball.linvel();
       const scale = Math.min(1.3, Math.max(0.5, this.throwSpeed / 8));
-      const up = (0.6 + this.rng() * 1.0) * scale; // ~2–13 cm hop
+      const up = (1.7 + this.rng() * 1.5) * scale; // ~15–50 cm hop at a normal speed (it's a tomato!)
       const side = (this.rng() - 0.5) * 0.16;
       this.ball.setLinvel({ x: v.x + side, y: v.y + up, z: v.z }, true);
       this.bumpCount++;

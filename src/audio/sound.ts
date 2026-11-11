@@ -229,8 +229,10 @@ export class Sound {
   bump() {
     if (!this.ready) return;
     const t = this.ctx!.currentTime;
-    this.tone(t, 'sine', 210, 90, 0.35, 0.09);
-    this.burst(t, 'lowpass', 900, 400, 0.7, 0.18, 0.04);
+    this.tone(t, 'sine', 210, 90, 0.4, 0.09);
+    this.burst(t, 'lowpass', 900, 400, 0.7, 0.2, 0.04);
+    // A little 'boing' as it takes off
+    this.tone(t + 0.02, 'triangle', 320, 640, 0.12, 0.18);
   }
 
   gutter() {

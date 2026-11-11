@@ -822,10 +822,10 @@ async function start() {
       // Over Dave's right shoulder
       // (far enough back that Dave looks his real size next to the lane)
       if (portrait) {
-        wantPos.set(dx + 0.55, 2.5, DAVE_Z + 4.4);
-        wantLook.set(aimX * 0.4, 0.15, -11);
+        wantPos.set(dx + 0.6, 2.3, DAVE_Z + 3.3);
+        wantLook.set(aimX * 0.4, 0.1, -10);
       } else {
-        wantPos.set(dx + 0.6, 2.15, DAVE_Z + 3.7);
+        wantPos.set(dx + 0.65, 1.95, DAVE_Z + 2.6);
         wantLook.set(aimX * 0.4, 0.05, -14);
       }
     } else if (phase === 'rolling' || phase === 'settling') {

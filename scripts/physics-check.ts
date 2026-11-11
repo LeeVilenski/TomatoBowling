@@ -85,8 +85,25 @@ async function main() {
   const spread = hops.length ? Math.max(...hops) - Math.min(...hops) : 0;
   console.log(`     stem hops in ${hops.length}/30 throws, at ${hops.map((h) => h.toFixed(1)).join(', ')} m`);
   check(hops.length >= 10 && hops.length < 30, `stem hops happen on most throws but not all (${hops.length}/30)`);
-  check(spread > 4, `hops happen at different points down the lane (spread ${spread.toFixed(1)} m)`);
-  check(biggest > 0.01 && biggest < 0.16, `hops are small (biggest ${(biggest * 100).toFixed(1)} cm)`);
+  check(spread > 3, `hops happen at different points down the lane (spread ${spread.toFixed(1)} m)`);
+  check(biggest > 0.15 && biggest < 0.9, `hops are big but sensible (biggest ${(biggest * 100).toFixed(1)} cm)`);
+
+  // Big late hops can clear the pins entirely; make sure that stays occasional
+  let overPins = 0;
+  for (let t = 0; t < 30; t++) {
+    ph.resetPins();
+    ph.holdBall(-0.06);
+    run(60);
+    ph.throwBall({ x: -0.06, angle: 0, speed: 11 });
+    let hit = false;
+    for (let i = 0; i < 1500 && !hit; i++) {
+      ph.step();
+      if (ph.ballPinContacts().length) hit = true;
+    }
+    if (!hit) overPins++;
+  }
+  check(overPins <= 8, `hopping over the pins is a rare treat, not the norm (${overPins}/30 flew over)`);
+  ph.stemBumps = false;
 
   // Pinsetter: after a first ball, standing pins come back and fallen ones are cleared
   const setter = new Pinsetter(ph, new Object3D());
