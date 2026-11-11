@@ -1,0 +1,52 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch cancels the older run
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Type-check, tests and simulations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Physics simulation
+        run: npm run check:physics
+      - name: Leaderboard API
+        run: npm run check:api
+
+  browser:
+    name: Build and play in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Play a few throws (pause, replay, scoring)
+        run: npm run check:browser

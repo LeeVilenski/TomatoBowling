@@ -402,7 +402,7 @@ html, body {
 .unlocks { margin: 10px 0 0; padding: 10px; border-radius: 12px; background: rgba(255, 210, 58, 0.15); font-size: 14px; }
 
 /* Fast forward (shown while the ball rolls) */
-#ff-btn {
+#ff-btn, #replay-btn {
   position: fixed;
   right: 16px;
   bottom: calc(max(14px, env(safe-area-inset-bottom)) + 44px);
@@ -418,6 +418,36 @@ html, body {
   z-index: 6;
 }
 #ff-btn[aria-pressed="true"] { background: #e0261b; }
+
+/* Replay */
+#replay-btn { animation: replay-in 0.3s ease-out; }
+@keyframes replay-in { from { opacity: 0; transform: translateY(8px); } }
+#replay-badge {
+  position: fixed;
+  top: calc(max(12px, env(safe-area-inset-top)) + 64px);
+  left: 16px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(20, 10, 30, 0.75);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 5;
+}
+#replay-badge .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #e0261b;
+  animation: rec-blink 1s steps(2, start) infinite;
+}
+/* Keep the replay clean: only the score, the result and the badge */
+body.replaying #readout, body.replaying #hint, body.replaying #spin, body.replaying #practice-panel { visibility: hidden; }
+#replay-badge small { display: block; font-weight: 600; letter-spacing: 0; opacity: 0.75; }
+@keyframes rec-blink { to { visibility: hidden; } }
 
 /* Venue picker on the menu */
 .venue-picker { display: flex; gap: 6px; }

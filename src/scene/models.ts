@@ -1,30 +1,76 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BALL_RADIUS, PIN_PROFILE } from '../game/dimensions';
 
-/** A white pin with two red neck stripes. Origin is at the base. */
-export function createPinMesh(): THREE.Group {
+/** Pin geometry and materials, built once and shared by every pin in the alley. */
+let pinParts: { body: THREE.BufferGeometry; stripes: THREE.BufferGeometry; white: THREE.Material; red: THREE.Material } | null = null;
+function getPinParts() {
+  if (pinParts) return pinParts;
   // Smooth curve through the profile points so the pin's outline isn't faceted
   const curve = new THREE.SplineCurve(PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)));
   const pts = curve.getPoints(60).map((p) => new THREE.Vector2(Math.max(0, p.x), p.y));
-  const body = new THREE.Mesh(
-    new THREE.LatheGeometry(pts, 40),
-    new THREE.MeshStandardMaterial({ color: '#f7f4ee', roughness: 0.25 }),
-  );
-  body.castShadow = true;
-  body.receiveShadow = true;
-
-  const stripeMat = new THREE.MeshStandardMaterial({ color: '#d0201a', roughness: 0.3 });
-  const group = new THREE.Group();
-  group.add(body);
-  for (const [y, r] of [
+  const rings = [
     [0.247, 0.0234],
     [0.262, 0.0238],
-  ]) {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.0012, r + 0.0012, 0.008, 40, 1, true), stripeMat);
-    ring.position.y = y;
-    group.add(ring);
+  ].map(([y, r]) => new THREE.CylinderGeometry(r + 0.0012, r + 0.0012, 0.008, 40, 1, true).translate(0, y, 0));
+  pinParts = {
+    body: new THREE.LatheGeometry(pts, 40),
+    stripes: mergeGeometries(rings)!,
+    white: new THREE.MeshStandardMaterial({ color: '#f7f4ee', roughness: 0.25 }),
+    red: new THREE.MeshStandardMaterial({ color: '#d0201a', roughness: 0.3 }),
+  };
+  return pinParts;
+}
+
+const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
+const ONE = new THREE.Vector3(1, 1, 1);
+
+/**
+ * A set of pins drawn together (two draw calls for any number of pins, instead of two or
+ * three per pin). Move pins with `set`, then call `commit` once per frame.
+ */
+export class PinSet {
+  readonly group = new THREE.Group();
+  private body: THREE.InstancedMesh;
+  private stripes: THREE.InstancedMesh;
+  private m = new THREE.Matrix4();
+  private p = new THREE.Vector3();
+  private q = new THREE.Quaternion();
+
+  constructor(
+    readonly count: number,
+    { shadows = true, moving = true } = {},
+  ) {
+    const parts = getPinParts();
+    this.body = new THREE.InstancedMesh(parts.body, parts.white, count);
+    this.stripes = new THREE.InstancedMesh(parts.stripes, parts.red, count);
+    for (const mesh of [this.body, this.stripes]) {
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
+      // Moving pins fly all over the deck, so don't let a stale bounding sphere cull them
+      mesh.frustumCulled = !moving;
+      if (moving) mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.group.add(mesh);
+    }
   }
-  return group;
+
+  /** Accepts plain {x, y, z} / {x, y, z, w} objects, like the ones the physics engine returns. */
+  set(i: number, pos: THREE.Vector3Like, quat: THREE.QuaternionLike, visible = true) {
+    if (visible) this.m.compose(this.p.copy(pos), this.q.set(quat.x, quat.y, quat.z, quat.w), ONE);
+    const m = visible ? this.m : HIDDEN;
+    this.body.setMatrixAt(i, m);
+    this.stripes.setMatrixAt(i, m);
+  }
+
+  /** Upload this frame's pin positions. */
+  commit() {
+    this.body.instanceMatrix.needsUpdate = true;
+    this.stripes.instanceMatrix.needsUpdate = true;
+    if (this.body.frustumCulled) {
+      this.body.computeBoundingSphere();
+      this.stripes.computeBoundingSphere();
+    }
+  }
 }
 
 export interface BallStyle {

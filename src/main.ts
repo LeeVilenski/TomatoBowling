@@ -5,14 +5,16 @@ import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, OUTER_HALF } from './game/dimension
 import { BowlingPhysics, PHYSICS_DT } from './game/physics';
 import { Match, type RollOutcome } from './game/match';
 import { Pinsetter, type PinsetterMode } from './game/pinsetter';
+import { ReplayRecorder, type Replay, type ReplayEvent } from './game/replay';
 import { mark } from './game/scoring';
 import { storage } from './save/storage';
 import { renderScorecard } from './ui/scorecard';
 import { attachControls, type ControlTarget } from './input/controls';
 import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
-import { BALL_STYLES, createPinMesh, createTomatoBall } from './scene/models';
-import { GameTracker, ITEMS, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
+import { CameraRig, type Shot } from './scene/cameraRig';
+import { BALL_STYLES, createTomatoBall, PinSet } from './scene/models';
+import { GameTracker, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
 import { Dave } from './scene/dave';
 import { buildDecor } from './scene/decor';
 import { ReturnChute } from './scene/chute';
@@ -21,9 +23,12 @@ import { Juice } from './scene/juice';
 import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
 import { Sound } from './audio/sound';
-import { fetchTopScores, LeaderboardError, submitScore, type LeaderboardEntry } from './net/leaderboard';
+import { LeaderboardScreen } from './ui/leaderboardScreen';
+import { PlayerSetup } from './ui/playerSetup';
+import { renderWardrobe, type Equipped } from './ui/wardrobe';
+import { $, escapeHtml, IN_GAME_SCREENS, MENU_SHOT_SCREENS, SCREENS, type ScreenId } from './ui/screens';
 
-type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'sweeping';
+type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'replay' | 'sweeping';
 
 const MAX_X = LANE_HALF - BALL_RADIUS - 0.03;
 const MAX_ANGLE = (4 * Math.PI) / 180;
@@ -37,16 +42,26 @@ const MAX_SPEED = 11;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
 const REACTION_AT = 1.1; // seconds of looking at the pins before cutting to Dave's reaction
 const RESULT_PAUSE = 3.6; // seconds before the pinsetter runs on its own
+const FAST = 3; // fast forward speed
 // Where Dave stands relative to the ball: the ball sits in his right hand
 const DAVE_OFFSET_X = 0.3;
 const DAVE_Z = 0.62;
 const BALL_IN_HAND = new THREE.Vector3(0, -0.075, 0);
 
 const clamp = THREE.MathUtils.clamp;
-const $ = (id: string) => document.getElementById(id)!;
-const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** Frees the GPU memory held by a model's geometry and materials. */
+function disposeModel(root: THREE.Object3D) {
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    o.geometry.dispose();
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+  });
+}
 
 async function start() {
+  // Start fetching and compiling the physics engine straight away; the scene is built meanwhile
+  const physicsReady = BowlingPhysics.create();
   const canvas = $('game') as HTMLCanvasElement;
   const status = $('status');
   const readout = $('readout');
@@ -55,7 +70,7 @@ async function start() {
   const spinValue = $('spin-value');
   const scorecardEl = $('scorecard');
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -65,20 +80,20 @@ async function start() {
   // Soft studio reflections so the shiny ball, pins and lane catch some light
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
   scene.environmentIntensity = 0.18;
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
+  const rig = new CameraRig(camera);
   const { keyLight, hemi, fill } = buildAlley(scene);
   const venues = new VenueManager(scene, { hemi, key: keyLight, fill });
   const chute = new ReturnChute();
   scene.add(chute.group);
 
-  const physics = await BowlingPhysics.create();
+  const physics = await physicsReady;
+  const bodies = [physics.ball, ...physics.pins];
 
-  const pinMeshes = physics.pins.map(() => {
-    const m = createPinMesh();
-    scene.add(m);
-    return m;
-  });
+  const pinSet = new PinSet(physics.pins.length);
+  scene.add(pinSet.group);
   let ballMesh = createTomatoBall();
   scene.add(ballMesh);
   buildDecor(scene);
@@ -87,22 +102,26 @@ async function start() {
 
   // ---- Unlockables: progress, and the ball and suit Dave is using ----
   let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
-  let equipped = storage.equipped();
+  let equipped: Equipped = storage.equipped();
   let speedBonus = 1;
-  function equip(ball: string, suit: string) {
+  function equip({ ball, suit }: Equipped) {
     const owned = unlockedIds(progress);
     if (!owned.has(ball)) ball = 'classic';
     if (!owned.has(suit)) suit = 'navy';
+    if (ball !== equipped.ball || !ballMesh.userData.style) {
+      scene.remove(ballMesh);
+      disposeModel(ballMesh);
+      ballMesh = createTomatoBall(ball);
+      ballMesh.userData.style = ball;
+      scene.add(ballMesh);
+    }
     equipped = { ball, suit };
     storage.saveEquipped(equipped);
-    scene.remove(ballMesh);
-    ballMesh = createTomatoBall(ball);
-    scene.add(ballMesh);
     physics.setBallRadius(BALL_STYLES[ball].radius);
     speedBonus = ball === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
     dave.setOutfit(suit);
   }
-  equip(equipped.ball, equipped.suit);
+  equip(equipped);
 
   // ---- Graphics quality: Low drops shadows and renders at a lower resolution ----
   // Only very modest devices start on Low (most phones report 6+ cores)
@@ -172,9 +191,8 @@ async function start() {
   const splashed = new Set<number>();
   let releaseBlend = 0; // eases the ball from Dave's hand down onto the lane
   let inGutter = false;
-  let timeScale = 1; // 3 while fast-forwarding a throw
+  let timeScale = 1; // FAST while fast-forwarding a throw
   const ffBtn = $('ff-btn') as HTMLButtonElement;
-  const FAST = 3;
   function setFastForward(on: boolean) {
     timeScale = on ? FAST : 1;
     ffBtn.setAttribute('aria-pressed', String(on));
@@ -182,6 +200,14 @@ async function start() {
   }
   ffBtn.addEventListener('click', () => controls.fastForward());
   const releaseFrom = new THREE.Vector3();
+
+  // ---- Replay of the last throw ----
+  const recorder = new ReplayRecorder();
+  let lastReplay: Replay | null = null;
+  let replayT = 0;
+  const replayBtn = $('replay-btn') as HTMLButtonElement;
+  const replayBadge = $('replay-badge');
+  replayBtn.addEventListener('click', () => controls.replay());
 
   // ---- Game mode state ----
   type Mode = 'single' | 'pass' | 'practice';
@@ -191,7 +217,7 @@ async function start() {
   let practiceBall: 1 | 2 = 1;
   let practiceRack: number[] | null = null; // a spare setup being practised, or null for full racks
   let nextSetter: PinsetterMode = 'rerack';
-  let openScreen: string | null = null;
+  let openScreen: ScreenId | null = null;
 
   const setStatus = (text: string) => (status.textContent = text);
   const spinLabel = (v: number) => (Math.abs(v) < 0.005 ? 'none' : `${v < 0 ? '◀' : '▶'} ${Math.round(Math.abs(v) * 100)}%`);
@@ -228,6 +254,8 @@ async function start() {
     releaseBlend = 1;
     phase = 'rolling';
     settleTime = 0;
+    lastReplay = null;
+    recorder.start();
     setStatus(`Rolling… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
     updateReadout(spinValue);
   }
@@ -244,6 +272,7 @@ async function start() {
     const knocked = totalDown - downBefore;
     const standingBefore = 10 - downBefore;
     lastThrow.knocked = knocked;
+    lastReplay = recorder.stop();
     setFastForward(false);
     phase = 'result';
     resultTime = 0;
@@ -253,14 +282,11 @@ async function start() {
     if (reaction === 'strike') {
       sound.cheer();
       buzz([40, 60, 90]);
-    }
-    else if (reaction === 'spare') sound.applause(1.6, 0.8);
-    else if (reaction === 'good') sound.applause(1, 0.45);
-    else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
-    if (reaction === 'strike') {
       // Extra-juicy strike
       juice.splash(new THREE.Vector3(0, 0.25, HEAD_PIN_Z - 0.35), 1.5, new THREE.Vector3(0, 0, -1));
-    }
+    } else if (reaction === 'spare') sound.applause(1.6, 0.8);
+    else if (reaction === 'good') sound.applause(1, 0.45);
+    else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
 
     if (mode === 'practice') {
       if (practiceRack) {
@@ -297,7 +323,6 @@ async function start() {
     pinsetter.start(setterMode, () => afterPinsetter(setterMode), rack);
   }
 
-  /** What happens once the pins are set: next ball, next player, or the end of the game. */
   /** After a throw's result: reset the pins, or if that was the last ball, show the final score. */
   function nextAfterResult() {
     if (outcome?.gameOver) {
@@ -311,6 +336,7 @@ async function start() {
     }
   }
 
+  /** Once the pins are set: the next ball, or the next player's turn. */
   function afterPinsetter(setterMode: PinsetterMode) {
     aim = 0; // each ball starts aimed straight down the lane
     phase = 'aiming';
@@ -323,10 +349,6 @@ async function start() {
     if (!match) return;
     const done = outcome;
     outcome = null;
-    if (done?.gameOver) {
-      showGameOver();
-      return;
-    }
     if (done?.playerChanged && mode === 'pass') {
       $('pass-name').textContent = match.player.name;
       $('pass-score').textContent = `Score so far: ${match.totals()[match.current]}`;
@@ -347,19 +369,67 @@ async function start() {
     renderScorecard(scorecardEl, match);
   }
 
+  // ---- Replay ----
+  function startReplay() {
+    if (!lastReplay || phase !== 'result' || openScreen !== null) return;
+    phase = 'replay';
+    replayT = 0;
+    speech.hide();
+    dave.idle();
+    juice.clear();
+    replayBadge.hidden = false;
+    document.body.classList.add('replaying');
+  }
+
+  function endReplay() {
+    if (phase !== 'replay') return;
+    phase = 'result';
+    replayBadge.hidden = true;
+    document.body.classList.remove('replaying');
+    sound.setRoll(0, false);
+    // Back to Dave for his reaction, then on to the next ball as usual
+    resultTime = REACTION_AT;
+    reactionShown = false;
+  }
+
+  function playReplayEvent(e: ReplayEvent) {
+    if (e.kind === 'hit') {
+      juice.splash(splashAt.set(e.at.x, e.at.y, e.at.z), e.strength, splashDir.set(e.dir.x, e.dir.y, e.dir.z));
+      sound.ballHit(e.strength);
+      rig.bump(0.025 * e.strength);
+    } else if (e.kind === 'clack') sound.clack(e.strength);
+    else if (e.kind === 'gutter') sound.gutter();
+    else sound.bump();
+  }
+
+  const replayBall = new THREE.Vector3();
+  const replayQuat = new THREE.Quaternion();
+  /** Moves the replay on by `dt` seconds of real time. Returns the playback rate. */
+  function updateReplay(dt: number) {
+    const r = lastReplay;
+    if (!r) return endReplay();
+    const rate = r.rateAt(replayT);
+    const next = Math.min(replayT + dt * rate, r.end);
+    for (const e of r.eventsBetween(replayT, next)) playReplayEvent(e);
+    replayT = next;
+    r.sample(replayT, 0, replayBall, replayQuat);
+    const gutter = Math.abs(replayBall.x) > LANE_HALF + 0.02 && replayBall.y < 0.05;
+    sound.setRoll(replayBall.y > -0.25 ? r.ballSpeed(replayT) * rate : 0, gutter);
+    if (replayT >= r.end) endReplay();
+  }
+
   // ---- Screens ----
-  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover', 'leaderboard', 'wardrobe', 'tutorial'];
-  function showScreen(id: string | null) {
+  function showScreen(id: ScreenId | null) {
     openScreen = id;
     sound.setMusicMood(id === null || id === 'pass' || id === 'tutorial' ? 'game' : 'menu');
-    for (const s of screens) ($(s) as HTMLElement).hidden = s !== id;
-    const inGame = id === null || id === 'pass' || id === 'pause' || id === 'tutorial';
-    $('hud').hidden = !inGame;
+    for (const s of SCREENS) $(s).hidden = s !== id;
+    $('hud').hidden = !IN_GAME_SCREENS.includes(id);
     $('pause-btn').hidden = id !== null;
     $('hint').hidden = id !== null;
     $('spin').hidden = id !== null;
     $('practice-panel').hidden = !(id === null && mode === 'practice');
     if (id === 'menu') {
+      if (phase === 'replay') endReplay();
       dave.wave();
       speech.hide();
       const best = storage.bestScore();
@@ -379,6 +449,10 @@ async function start() {
     spin = 0;
     aim = 0;
     aimX = 0;
+    recorder.stop();
+    lastReplay = null;
+    replayBadge.hidden = true;
+    document.body.classList.remove('replaying');
     physics.resetPins();
     physics.holdBall(aimX);
     pinsetter.cancel();
@@ -397,16 +471,19 @@ async function start() {
     }
   }
 
+  // ---- Online leaderboard ----
+  const leaderboard = new LeaderboardScreen(() => showScreen('leaderboard'));
+
   function showGameOver() {
     if (!match) return;
     const totals = match.totals();
     const top = Math.max(...totals);
     dave.react(top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
-    const unlockNote = () =>
-      [...gameUnlocks, ...fresh].length
-        ? `<div class="unlocks">🎁 Unlocked: <b>${[...gameUnlocks, ...fresh].map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
-        : '';
+    const unlocked = [...gameUnlocks, ...fresh];
+    const unlockNote = unlocked.length
+      ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
+      : '';
     const body = $('go-body');
     if (match.players.length === 1) {
       const score = totals[0];
@@ -415,95 +492,18 @@ async function start() {
       $('go-title').textContent = score === 300 ? 'PERFECT GAME!' : 'Game over';
       body.innerHTML = `<div class="big-score">${score}</div><p class="small">${
         isBest ? (best > 0 ? '🍅 New personal best!' : '🍅 First game in the books!') : `Your best: ${best}`
-      }</p>${unlockNote()}`;
-      offerSubmission(score, [...match.players[0].rolls]);
+      }</p>${unlockNote}`;
+      leaderboard.offer(score, [...match.players[0].rolls]);
     } else {
       const leaders = match.leaders();
       const order = match.players.map((p, i) => ({ name: p.name, score: totals[i], i })).sort((a, b) => b.score - a.score);
-      ($('submit-form') as HTMLFormElement).hidden = true;
+      leaderboard.hideForm();
       $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
-        .join('')}</ul>${unlockNote()}`;
+        .join('')}</ul>${unlockNote}`;
     }
     showScreen('gameover');
-  }
-
-  // ---- Online leaderboard ----
-  let mine: LeaderboardEntry | null = null; // the score this device just submitted, to highlight it
-  const form = $('submit-form') as HTMLFormElement;
-  const nameInput = $('lb-name') as HTMLInputElement;
-  const submitBtn = $('lb-submit') as HTMLButtonElement;
-  const lbMsg = $('lb-msg');
-  let pending: { score: number; rolls: number[] } | null = null;
-
-  function setLbMsg(text: string, kind: '' | 'error' | 'good' = '') {
-    lbMsg.textContent = text;
-    lbMsg.className = 'small ' + kind;
-  }
-
-  function offerSubmission(score: number, rolls: number[]) {
-    pending = { score, rolls };
-    form.hidden = false;
-    nameInput.disabled = false;
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Submit';
-    nameInput.value = storage.nickname();
-    setLbMsg('');
-    $('lb-view').hidden = true;
-  }
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!pending) return;
-    const name = nameInput.value.trim();
-    if (!name) {
-      setLbMsg('Please enter a name.', 'error');
-      return;
-    }
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Sending…';
-    setLbMsg('');
-    try {
-      const res = await submitScore(name, pending.score, pending.rolls);
-      storage.saveNickname(res.entry.name);
-      mine = res.entry;
-      pending = null;
-      nameInput.disabled = true;
-      submitBtn.textContent = 'Sent ✓';
-      $('lb-view').hidden = false;
-      setLbMsg(res.rank <= 50 ? `You're #${res.rank} on the leaderboard! 🍅` : `Submitted! You're #${res.rank} — keep bowling to reach the top 50.`, 'good');
-    } catch (err) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Submit';
-      setLbMsg(err instanceof LeaderboardError ? err.message : 'Something went wrong. Try again.', 'error');
-    }
-  });
-
-  $('lb-view').addEventListener('click', () => void openLeaderboard());
-
-  async function openLeaderboard() {
-    showScreen('leaderboard');
-    const list = $('lb-list');
-    const status = $('lb-status');
-    const best = storage.bestScore();
-    $('lb-best').textContent = best > 0 ? `Your best on this device: ${best}` : '';
-    list.innerHTML = '';
-    status.textContent = 'Loading…';
-    try {
-      const scores = await fetchTopScores();
-      status.textContent = scores.length ? 'Top 50 of all time' : 'No scores yet — be the first!';
-      let highlighted = false;
-      list.innerHTML = scores
-        .map((s, i) => {
-          const me = !highlighted && mine !== null && s.name === mine.name && s.score === mine.score && s.date === mine.date;
-          if (me) highlighted = true;
-          return `<li class="${me ? 'me' : ''}"><span class="rank">${i + 1}</span><span class="who">${escapeHtml(s.name)}</span><span class="pts">${s.score}</span></li>`;
-        })
-        .join('');
-    } catch (err) {
-      status.textContent = err instanceof LeaderboardError ? err.message : 'Leaderboard offline — try again later.';
-    }
   }
 
   // ---- Progress, unlock toasts and the Wardrobe ----
@@ -536,49 +536,9 @@ async function start() {
     if (sound.sfxOn && 'vibrate' in navigator) navigator.vibrate(pattern);
   }
 
-  const SWATCHES: Record<string, string> = {
-    classic: 'radial-gradient(circle at 35% 30%, #ff6a55, #c81d12)',
-    cherry: 'radial-gradient(circle at 35% 30%, #ff7a5c, #e0261b)',
-    green: 'radial-gradient(circle at 35% 30%, #b6ea6c, #5ea52c)',
-    heirloom: 'repeating-linear-gradient(100deg, #d9361a 0 6px, #ffb02e 6px 10px, #8bbf3a 10px 13px)',
-    golden: 'radial-gradient(circle at 35% 30%, #fff1b0, #d4a017)',
-    navy: '#1f2a4d',
-    tuxedo: 'linear-gradient(90deg, #121216 40%, #fff 40% 60%, #121216 60%)',
-    pinstripe: 'repeating-linear-gradient(90deg, #3a3d48 0 5px, #c9c9d4 5px 6px)',
-    tracksuit: 'linear-gradient(90deg, #2f8f2a 30%, #fff 30% 38%, #2f8f2a 38% 62%, #fff 62% 70%, #2f8f2a 70%)',
-  };
-
   function openWardrobe() {
     showScreen('wardrobe');
-    renderWardrobe();
-  }
-
-  function renderWardrobe() {
-    const owned = unlockedIds(progress);
-    for (const kind of ['ball', 'suit'] as const) {
-      const box = $(kind === 'ball' ? 'wr-balls' : 'wr-suits');
-      box.innerHTML = '';
-      for (const item of ITEMS.filter((i) => i.kind === kind)) {
-        const have = owned.has(item.id);
-        const on = equipped[kind] === item.id;
-        const b = document.createElement('button');
-        b.className = `chip${on ? ' on' : ''}${have ? '' : ' locked'}`;
-        b.setAttribute('aria-pressed', String(on));
-        b.innerHTML = `<span class="swatch${kind === 'suit' ? ' suit' : ''}" style="background:${SWATCHES[item.id]}"></span><span>${item.name}</span>${
-          have ? '' : `<span class="how">${item.how}</span>`
-        }`;
-        b.addEventListener('click', () => {
-          if (!have) {
-            $('wr-hint').textContent = `🔒 ${item.name}: ${item.how}.`;
-            return;
-          }
-          equip(kind === 'ball' ? item.id : equipped.ball, kind === 'suit' ? item.id : equipped.suit);
-          $('wr-hint').textContent = '';
-          renderWardrobe();
-        });
-        box.append(b);
-      }
-    }
+    renderWardrobe(progress, equipped, equip);
   }
 
   // Practice spare setups
@@ -675,6 +635,7 @@ async function start() {
     },
     advance() {
       if (openScreen === 'pass') showScreen(null);
+      else if (openScreen === null && phase === 'replay') endReplay();
       else if (openScreen === null && phase === 'result') {
         if (resultTime < REACTION_AT) resultTime = REACTION_AT;
         else nextAfterResult();
@@ -686,6 +647,10 @@ async function start() {
     },
     fastForward() {
       if (openScreen === null && (phase === 'rolling' || phase === 'settling')) setFastForward(timeScale === 1);
+    },
+    replay() {
+      if (phase === 'replay') endReplay();
+      else startReplay();
     },
     pause() {
       if (openScreen === null && phase !== 'charging') showScreen('pause');
@@ -728,18 +693,21 @@ async function start() {
   refreshToggles();
   // A soft click for every menu button
   document.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.card button, #practice-panel button, #spin button, #pause-btn')) sound.click();
+    if ((e.target as HTMLElement).closest('.card button, #practice-panel button, #spin button, #pause-btn, #replay-btn')) sound.click();
   });
 
   // ---- Screen buttons ----
+  const playerSetup = new PlayerSetup((names) => startGame('pass', names));
   document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) =>
     b.addEventListener('click', () => {
       const go = b.dataset.go!;
       if (go === 'single') startGame('single');
       else if (go === 'practice') startGame('practice');
-      else if (go === 'setup') openSetup();
-      else if (go === 'menu') showScreen('menu');
-      else if (go === 'leaderboard') void openLeaderboard();
+      else if (go === 'setup') {
+        playerSetup.load();
+        showScreen('setup');
+      } else if (go === 'menu') showScreen('menu');
+      else if (go === 'leaderboard') void leaderboard.open();
       else if (go === 'wardrobe') openWardrobe();
     }),
   );
@@ -754,111 +722,23 @@ async function start() {
   $('play-again').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
   $('pass-ready').addEventListener('click', () => showScreen(null));
 
-  // Pass & Play setup: 2–4 named players
-  const playerList = $('player-list');
-  function renderPlayers(names: string[]) {
-    playerList.innerHTML = '';
-    names.forEach((name, i) => {
-      const row = document.createElement('div');
-      row.className = 'player-input';
-      const input = document.createElement('input');
-      input.value = name;
-      input.maxLength = 12;
-      input.placeholder = `Player ${i + 1}`;
-      input.setAttribute('aria-label', `Player ${i + 1} name`);
-      row.append(input);
-      if (names.length > 2) {
-        const remove = document.createElement('button');
-        remove.textContent = '×';
-        remove.setAttribute('aria-label', `Remove player ${i + 1}`);
-        remove.addEventListener('click', () => renderPlayers(currentNames().filter((_, j) => j !== i)));
-        row.append(remove);
-      }
-      playerList.append(row);
-    });
-    ($('add-player') as HTMLButtonElement).hidden = names.length >= 4;
-  }
-  const currentNames = () =>
-    Array.from(playerList.querySelectorAll('input')).map((inp, i) => inp.value.trim().slice(0, 12) || `Player ${i + 1}`);
-  function openSetup() {
-    const saved = storage.playerNames();
-    renderPlayers(saved.length >= 2 && saved.length <= 4 ? saved : ['Player 1', 'Player 2']);
-    showScreen('setup');
-  }
-  $('add-player').addEventListener('click', () => {
-    const names = currentNames();
-    if (names.length < 4) renderPlayers([...names, `Player ${names.length + 1}`]);
-  });
-  $('start-pass').addEventListener('click', () => {
-    const names = currentNames();
-    storage.savePlayerNames(names);
-    startGame('pass', names);
-  });
-
   // ---- Resize ----
   function resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    // Portrait phones need a wider view to see the lane
-    camera.fov = camera.aspect < 0.8 ? 68 : 55;
-    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    rig.resize(window.innerWidth, window.innerHeight);
   }
   window.addEventListener('resize', resize);
   resize();
 
   // ---- Camera ----
-  const camPos = new THREE.Vector3(0.35, 1.5, 2.4);
-  const camLook = new THREE.Vector3(0, 0, -16);
-  const wantPos = new THREE.Vector3();
-  const wantLook = new THREE.Vector3();
-
-  const davePos = new THREE.Vector3();
-  function updateCamera(dt: number) {
-    const b = physics.ball.translation();
-    const portrait = camera.aspect < 0.8;
-    const dx = aimX - DAVE_OFFSET_X;
-    davePos.copy(dave.root.position);
-    const menuShot = ['menu', 'gameover', 'leaderboard', 'setup', 'wardrobe'].includes(openScreen ?? '');
-    const showDave = menuShot || (phase === 'result' && resultTime >= REACTION_AT);
-
-    if (menuShot) {
-      // Menu card sits low on the screen; frame Dave in the top half above it
-      wantPos.set(davePos.x + 0.5, 1.2, davePos.z - (portrait ? 4.6 : 3.4));
-      wantLook.set(davePos.x, portrait ? 0.15 : 0.55, davePos.z);
-    } else if (showDave) {
-      // Face-on shot of Dave from down the lane
-      wantPos.set(davePos.x + 0.35, 1.35, davePos.z - (portrait ? 3.6 : 2.7));
-      wantLook.set(davePos.x, portrait ? 1.15 : 1.4, davePos.z);
-    } else if (phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping') {
-      // Over Dave's right shoulder
-      // (far enough back that Dave looks his real size next to the lane)
-      if (portrait) {
-        wantPos.set(dx + 0.6, 2.3, DAVE_Z + 3.3);
-        wantLook.set(aimX * 0.4, 0.1, -10);
-      } else {
-        wantPos.set(dx + 0.65, 1.95, DAVE_Z + 2.6);
-        wantLook.set(aimX * 0.4, 0.05, -14);
-      }
-    } else if (phase === 'rolling' || phase === 'settling') {
-      const z = Math.max(b.z + 3.2, HEAD_PIN_Z + 4.2);
-      wantPos.set(b.x * 0.5, THREE.MathUtils.lerp(0.75, 1.4, clamp(z / 2, 0, 1)), z);
-      wantLook.set(b.x * 0.5, 0.1, Math.max(b.z - 6, HEAD_PIN_Z - 0.4));
-    } else {
-      wantPos.set(0, 0.85, HEAD_PIN_Z + 3.6);
-      wantLook.set(0, 0.15, HEAD_PIN_Z - 0.4);
-    }
-    // Cut (rather than glide) when switching to or from the reaction shot
-    const cut = showDave !== lastShowDave;
-    lastShowDave = showDave;
-    const k = cut ? 1 : 1 - Math.exp(-dt * (phase === 'rolling' ? 6 : 3));
-    camPos.lerp(wantPos, k);
-    camLook.lerp(wantLook, k);
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
+  function currentShot(): Shot {
+    if (MENU_SHOT_SCREENS.includes(openScreen)) return 'menu';
+    if (phase === 'replay') return 'replay';
+    if (phase === 'result' && resultTime >= REACTION_AT) return 'dave';
+    if (phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping') return 'aim';
+    if (phase === 'rolling' || phase === 'settling') return 'follow';
+    return 'pins';
   }
-  let lastShowDave = false;
 
   // ---- Per-frame updates ----
   const tmp = new THREE.Vector3();
@@ -880,14 +760,19 @@ async function start() {
     aimLine.computeLineDistances();
   }
 
+  const pinPos = new THREE.Vector3();
+  const pinQuat = new THREE.Quaternion();
   function syncMeshes() {
-    physics.pins.forEach((pin, i) => {
-      const p = pin.translation();
-      const q = pin.rotation();
-      pinMeshes[i].visible = !physics.isPinRemoved(i);
-      pinMeshes[i].position.set(p.x, p.y, p.z);
-      pinMeshes[i].quaternion.set(q.x, q.y, q.z, q.w);
-    });
+    if (phase === 'replay' && lastReplay) {
+      // Everything comes from the recording
+      const r = lastReplay;
+      ballMesh.visible = r.sample(replayT, 0, ballMesh.position, ballMesh.quaternion);
+      for (let i = 0; i < pinSet.count; i++) pinSet.set(i, pinPos, pinQuat, r.sample(replayT, i + 1, pinPos, pinQuat));
+      pinSet.commit();
+      return;
+    }
+    physics.pins.forEach((pin, i) => pinSet.set(i, pin.translation(), pin.rotation(), !physics.isPinRemoved(i)));
+    pinSet.commit();
     const held = phase === 'aiming' || phase === 'charging' || phase === 'swinging';
     ballMesh.visible = true;
     if (phase === 'sweeping') {
@@ -908,13 +793,17 @@ async function start() {
   // ---- Sound from the physics: rolling, gutter, and pins clattering ----
   const prevPinVel = physics.pins.map(() => new THREE.Vector3());
   const pinVel = new THREE.Vector3();
-  function updateSounds() {
-    const live = phase === 'rolling' || phase === 'settling';
+  function updateSounds(frozen: boolean) {
+    if (phase === 'replay') return; // the replay plays its own recorded sounds
+    const live = !frozen && (phase === 'rolling' || phase === 'settling');
     const b = physics.ball.translation();
     const v = physics.ball.linvel();
     const onLane = live && b.y > -0.25 && b.z > HEAD_PIN_Z - 1.2;
     const nowInGutter = Math.abs(b.x) > LANE_HALF + 0.02 && b.y < 0.05;
-    if (onLane && nowInGutter && !inGutter) sound.gutter();
+    if (onLane && nowInGutter && !inGutter) {
+      sound.gutter();
+      recorder.event({ kind: 'gutter' });
+    }
     inGutter = nowInGutter;
     sound.setRoll(onLane ? Math.hypot(v.x, v.z) : 0, nowInGutter);
 
@@ -927,6 +816,7 @@ async function start() {
       if (live && jolt > 0.7 && clacks < 6 && !physics.isPinRemoved(i)) {
         clacks++;
         sound.clack(jolt / 3);
+        recorder.event({ kind: 'clack', strength: jolt / 3 });
       }
     });
   }
@@ -945,6 +835,7 @@ async function start() {
       splashDir.set(v.x, 0, v.z).normalize();
       const strength = clamp(Math.hypot(v.x, v.z) / 9, 0.25, 1) * (splashed.size === 1 ? 1 : 0.6);
       juice.splash(splashAt, strength, splashDir);
+      recorder.event({ kind: 'hit', at: splashAt.clone(), dir: splashDir.clone(), strength });
       sound.ballHit(strength);
       if (splashed.size === 1) buzz(25);
     }
@@ -968,7 +859,9 @@ async function start() {
     } else if (phase === 'settling') {
       settleTime += dt;
       if ((settleTime > 2 && physics.isSettled()) || settleTime > 6) finishThrow();
-    } else if (phase === 'result' && openScreen === null) {
+    } else if (phase === 'replay') {
+      updateReplay(dt);
+    } else if (phase === 'result') {
       resultTime += dt;
       if (resultTime >= REACTION_AT && !reactionShown) {
         reactionShown = true;
@@ -985,33 +878,41 @@ async function start() {
   function frame(now: number) {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
-    acc += dt * timeScale;
+    // While any screen is open (pause, menus, pass the device...) the game itself stands still
+    const frozen = openScreen !== null;
+    const gameDt = frozen ? 0 : dt * timeScale;
+    acc += gameDt;
     let steps = 0;
     const maxSteps = 12 * timeScale;
     while (acc >= PHYSICS_DT && steps < maxSteps) {
       pinsetter.update(PHYSICS_DT);
       physics.step();
+      recorder.capture(bodies);
       acc -= PHYSICS_DT;
       steps++;
     }
     if (steps === maxSteps) acc = 0;
 
-    updatePhase(dt * timeScale);
+    updatePhase(gameDt);
     ffBtn.hidden = !(openScreen === null && (phase === 'rolling' || phase === 'settling'));
+    replayBtn.hidden = !(openScreen === null && phase === 'result' && lastReplay !== null);
     if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') dave.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
-    dave.update(dt);
-    releaseBlend = Math.max(0, releaseBlend - dt / 0.15);
+    // Dave keeps moving in the menus (he waves), but freezes mid-move on the pause screen
+    dave.update(openScreen === 'pause' ? 0 : dt);
+    releaseBlend = Math.max(0, releaseBlend - gameDt / 0.15);
     syncMeshes();
-    updateJuice();
-    juice.update(dt * timeScale);
-    updateSounds();
+    if (!frozen) updateJuice();
+    juice.update(phase === 'replay' && lastReplay ? gameDt * lastReplay.rateAt(replayT) : gameDt);
+    updateSounds(frozen);
     venues.update(dt);
     if (physics.bumped) {
       physics.bumped = false;
       sound.bump();
+      recorder.event({ kind: 'bump' });
     }
     updateAimLine();
-    updateCamera(dt);
+    const b = phase === 'replay' ? ballMesh.position : physics.ball.translation();
+    rig.update(dt, { shot: currentShot(), standX: aimX - DAVE_OFFSET_X, aimX, daveZ: DAVE_Z, dave: dave.root.position, ball: b });
     input.update(dt);
     renderer.render(scene, camera);
     speech.update(dave, camera);
@@ -1022,6 +923,8 @@ async function start() {
   (window as unknown as { __game: unknown }).__game = {
     physics,
     controls,
+    renderer,
+    scene,
     throwBall: (x = 0, aimValue = 0, p = 0.5, s = 0) => {
       aimX = x;
       physics.holdBall(aimX);
@@ -1044,8 +947,12 @@ async function start() {
       return openScreen;
     },
     startGame,
+    showScreen,
     get lastThrow() {
       return lastThrow;
+    },
+    get replay() {
+      return lastReplay;
     },
   };
 

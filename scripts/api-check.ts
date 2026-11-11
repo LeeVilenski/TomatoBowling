@@ -98,6 +98,12 @@ async function main() {
   check(r.status === 200 && list.scores.length === 2, `top list: ${JSON.stringify(list.scores)}`);
   check(list.scores[0].name === 'Tomato Dave' && list.scores[0].score === 300 && list.scores[1].score === 90, 'ordered best first, names and scores intact');
 
+  // A tie: the earlier 90 (Ann) stays ahead of the later one
+  await new Promise((done) => setTimeout(done, 5));
+  r = await post({ name: 'Bob', score: 90, rolls: nines }, '9.9.9.9');
+  const tie = await r.json();
+  check(tie.rank === 3 && tie.scores.map((s: { name: string }) => s.name).join() === 'Tomato Dave,Ann,Bob', `ties keep the earlier score ahead → rank ${tie.rank}`);
+
   for (let i = 0; i < 4; i++) await post({ name: 'Ann', score: 90, rolls: nines });
   r = await post({ name: 'Ann', score: 90, rolls: nines });
   check(r.status === 429, `6th submission in an hour is rate limited → ${r.status}`);

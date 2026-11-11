@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { DECK_END_Z, OUTER_HALF, pinSpots } from '../game/dimensions';
-import { createPinMesh } from './models';
+import { PinSet } from './models';
 
 const NEIGHBOUR_X = OUTER_HALF * 2 + 0.34; // centre of the lanes either side
 
@@ -110,13 +110,16 @@ export function carpet() {
 
 /** Parts of the alley every venue shares: neighbouring lanes' pins and masking units, and a face light for Dave. */
 export function buildDecor(scene: THREE.Scene) {
+  // The neighbouring lanes' pins never move, and are all drawn together
+  const spots = pinSpots();
+  const neighbours = new PinSet(spots.length * 2, { shadows: false, moving: false });
+  const upright = new THREE.Quaternion();
+  [-1, 1].forEach((side, k) =>
+    spots.forEach((s, i) => neighbours.set(k * spots.length + i, new THREE.Vector3(s.x + side * NEIGHBOUR_X, 0, s.z), upright)),
+  );
+  neighbours.commit();
+  scene.add(neighbours.group);
   for (const side of [-1, 1]) {
-    for (const s of pinSpots()) {
-      const pin = createPinMesh();
-      pin.traverse((o) => (o.castShadow = false));
-      pin.position.set(s.x + side * NEIGHBOUR_X, 0, s.z);
-      scene.add(pin);
-    }
     const mask = new THREE.Mesh(
       new THREE.BoxGeometry(OUTER_HALF * 2 + 0.3, 0.55, 0.08),
       new THREE.MeshStandardMaterial({ color: '#8e1d14', roughness: 0.7 }),

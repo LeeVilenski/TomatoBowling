@@ -82,3 +82,6 @@ export function gutterPlates(): Plate[] {
   }
   return plates;
 }
+
+/** Fixed physics step (seconds). */
+export const PHYSICS_DT = 1 / 120;
