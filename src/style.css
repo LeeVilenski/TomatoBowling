@@ -1,0 +1,81 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1b1026;
+  color: #fff8ec;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+#hud {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 16px;
+  right: 16px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+#hud header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+#hud h1 { margin: 0; font-size: clamp(18px, 4.5vw, 28px); color: #ff4a3a; letter-spacing: 0.5px; }
+#hud .tag { font-size: 12px; opacity: 0.7; }
+#status { margin: 6px 0 2px; font-size: clamp(15px, 3.6vw, 20px); font-weight: 600; }
+#readout { margin: 0; font-size: 13px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+#controls {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 14px;
+}
+#controls .group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(20, 10, 30, 0.6);
+  border-radius: 14px;
+  padding: 6px 8px;
+}
+#controls .label { font-size: 11px; text-transform: uppercase; opacity: 0.7; margin-right: 2px; }
+#controls button {
+  min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #3a2350;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: none;
+}
+#controls button:active { background: #57357a; }
+#controls button.throw { background: #e0261b; padding: 0 22px; }
+#controls button.throw:active { background: #ff4a3a; }
+
+#keys {
+  position: fixed;
+  right: 16px;
+  top: max(10px, env(safe-area-inset-top));
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.6;
+}
+@media (max-width: 900px), (pointer: coarse) { #keys { display: none; } }
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #1b1026;
+  font-size: 20px;
+}
