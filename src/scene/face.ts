@@ -80,53 +80,109 @@ function drawFace(g: CanvasRenderingContext2D, e: Expression) {
   brow(eyes[0][0], lt, ll);
   brow(eyes[1][0], rt, rl);
 
-  // Mouth (under the moustache)
-  const my = 186;
-  g.strokeStyle = INK;
-  g.lineWidth = 7;
+  // A little nose: gives the face some structure (nose, moustache, mouth)
+  g.fillStyle = '#b81d14';
   g.beginPath();
+  g.ellipse(128, 134, 13, 10, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = 'rgba(255, 220, 200, 0.55)';
+  g.beginPath();
+  g.ellipse(124, 130, 4, 3, 0, 0, Math.PI * 2);
+  g.fill();
+
+  // Mouth, below the moustache. Open mouths are dark inside with teeth, so they read as a
+  // mouth rather than a pair of lips.
+  const my = 196;
+  g.strokeStyle = INK;
+  g.lineWidth = 5;
   if (e === 'ecstatic' || e === 'happy') {
-    const open = e === 'ecstatic' ? 34 : 18;
-    g.fillStyle = '#5a0f0a';
-    g.moveTo(96, my - 6);
-    g.quadraticCurveTo(128, my + open * 1.6, 160, my - 6);
-    g.closePath();
-    g.fill();
-    g.stroke();
-  } else if (e === 'sad') {
-    g.moveTo(102, my + 14);
-    g.quadraticCurveTo(128, my - 12, 154, my + 14);
-    g.stroke();
-  } else if (e === 'confused') {
-    g.moveTo(104, my + 4);
-    g.bezierCurveTo(116, my - 6, 134, my + 14, 152, my);
-    g.stroke();
-  } else if (e === 'focused') {
-    g.moveTo(110, my + 2);
-    g.lineTo(146, my + 2);
-    g.stroke();
-    // Tongue poking out in concentration
-    g.fillStyle = '#ff7f8a';
+    const open = e === 'ecstatic' ? 30 : 16;
+    const w = e === 'ecstatic' ? 30 : 24;
+    g.save();
     g.beginPath();
-    g.ellipse(140, my + 10, 9, 8, 0, 0, Math.PI);
+    g.moveTo(128 - w, my - 4);
+    g.quadraticCurveTo(128, my + open * 1.7, 128 + w, my - 4);
+    g.closePath();
+    g.fillStyle = '#2a0805';
     g.fill();
-  } else {
-    g.moveTo(106, my + 2);
-    g.quadraticCurveTo(128, my + (e === 'meh' ? 2 : 10), 150, my + 2);
+    g.clip();
+    g.fillStyle = '#fffaf0';
+    g.fillRect(128 - w, my - 6, w * 2, 8); // top teeth
+    if (e === 'ecstatic') {
+      g.fillStyle = '#ff7f8a';
+      g.beginPath();
+      g.ellipse(128, my + open * 0.95, 14, 9, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+    g.beginPath();
+    g.moveTo(128 - w, my - 4);
+    g.quadraticCurveTo(128, my + open * 1.7, 128 + w, my - 4);
+    g.closePath();
     g.stroke();
+  } else {
+    g.beginPath();
+    if (e === 'sad') {
+      g.moveTo(110, my + 10);
+      g.quadraticCurveTo(128, my - 6, 146, my + 10);
+    } else if (e === 'confused') {
+      g.moveTo(110, my + 2);
+      g.bezierCurveTo(120, my - 6, 134, my + 10, 146, my - 2);
+    } else if (e === 'focused') {
+      g.moveTo(114, my);
+      g.lineTo(142, my);
+    } else {
+      g.moveTo(112, my);
+      g.quadraticCurveTo(128, my + (e === 'meh' ? 0 : 8), 144, my);
+    }
+    g.stroke();
+    if (e === 'focused') {
+      // Tongue poking out of the corner in concentration
+      g.fillStyle = '#ff7f8a';
+      g.beginPath();
+      g.ellipse(138, my + 6, 7, 6, 0, 0, Math.PI);
+      g.fill();
+    }
   }
 
-  // Handlebar moustache
-  g.fillStyle = '#3b1d0c';
-  g.beginPath();
-  g.moveTo(128, 160);
-  g.bezierCurveTo(108, 150, 84, 158, 76, 176);
-  g.bezierCurveTo(70, 164, 60, 160, 54, 166);
-  g.bezierCurveTo(66, 180, 98, 186, 128, 172);
-  g.bezierCurveTo(158, 186, 190, 180, 202, 166);
-  g.bezierCurveTo(196, 160, 186, 164, 180, 176);
-  g.bezierCurveTo(172, 158, 148, 150, 128, 160);
-  g.fill();
+  // Bushy handlebar moustache with curled tips, drawn as a mass of hair strokes
+  const stache = (dir: 1 | -1) => {
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      // Runs out from the middle, drooping slightly, then curls up at the tip
+      const x = 128 + dir * (6 + t * 64);
+      const y = 158 + Math.sin(t * Math.PI) * 6 - Math.pow(Math.max(0, t - 0.7) / 0.3, 2) * 22;
+      pts.push([x, y]);
+    }
+    return pts;
+  };
+  for (const dir of [1, -1] as const) {
+    const path = stache(dir);
+    // Thick base, tapering towards the curled tip
+    path.forEach(([x, y], i) => {
+      const t = i / (path.length - 1);
+      const r = 12 * (1 - t) + 2.5;
+      g.fillStyle = '#4a2610';
+      g.beginPath();
+      g.ellipse(x, y, r * 1.15, r, 0, 0, Math.PI * 2);
+      g.fill();
+    });
+    // Hair strokes on top
+    g.strokeStyle = '#6e3c19';
+    g.lineWidth = 1.6;
+    for (let i = 0; i < path.length - 2; i += 1) {
+      const [x, y] = path[i];
+      const t = i / (path.length - 1);
+      const r = 10 * (1 - t) + 2;
+      for (const off of [-0.6, 0, 0.6]) {
+        g.beginPath();
+        g.moveTo(x - dir * 2, y + off * r);
+        g.lineTo(x + dir * 6, y + off * r + 2);
+        g.stroke();
+      }
+    }
+  }
 }
 
 /** One texture per expression, drawn once and reused. */
