@@ -298,6 +298,19 @@ async function start() {
   }
 
   /** What happens once the pins are set: next ball, next player, or the end of the game. */
+  /** After a throw's result: reset the pins, or if that was the last ball, show the final score. */
+  function nextAfterResult() {
+    if (outcome?.gameOver) {
+      outcome = null;
+      speech.hide();
+      phase = 'aiming';
+      physics.holdBall(aimX);
+      showGameOver();
+    } else {
+      runPinsetter(nextSetter);
+    }
+  }
+
   function afterPinsetter(setterMode: PinsetterMode) {
     aim = 0; // each ball starts aimed straight down the lane
     phase = 'aiming';
@@ -664,7 +677,7 @@ async function start() {
       if (openScreen === 'pass') showScreen(null);
       else if (openScreen === null && phase === 'result') {
         if (resultTime < REACTION_AT) resultTime = REACTION_AT;
-        else runPinsetter(nextSetter);
+        else nextAfterResult();
       }
     },
     rerack() {
@@ -962,7 +975,7 @@ async function start() {
         dave.react(reaction);
         speech.show(pickLine(reaction));
       }
-      if (resultTime > RESULT_PAUSE) runPinsetter(nextSetter);
+      if (resultTime > RESULT_PAUSE) nextAfterResult();
     }
   }
 
