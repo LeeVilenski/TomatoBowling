@@ -47,6 +47,8 @@ export class BowlingPhysics {
   readonly world: RAPIER.World;
   readonly ball: RAPIER.RigidBody;
   readonly pins: RAPIER.RigidBody[] = [];
+  private ballCollider!: RAPIER.Collider;
+  private pinByCollider = new Map<number, number>();
   private readonly spots = pinSpots();
 
   private constructor() {
@@ -72,10 +74,13 @@ export class BowlingPhysics {
           .setRestitution(PIN_RESTITUTION),
         body,
       );
-      this.world.createCollider(
+      const foot = body.collider(0);
+      const shell = this.world.createCollider(
         hull.setMass(PIN_MASS - 0.1).setFriction(PIN_FRICTION).setRestitution(PIN_RESTITUTION),
         body,
       );
+      this.pinByCollider.set(foot.handle, this.pins.length);
+      this.pinByCollider.set(shell.handle, this.pins.length);
       this.pins.push(body);
     }
 
@@ -85,7 +90,7 @@ export class BowlingPhysics {
         .setCcdEnabled(true)
         .setAngularDamping(0.05),
     );
-    this.world.createCollider(
+    this.ballCollider = this.world.createCollider(
       RAPIER.ColliderDesc.ball(BALL_RADIUS)
         .setMass(BALL_MASS)
         // Multiply wins over the default rule, so ball-on-surface friction is just the surface's value
@@ -234,6 +239,26 @@ export class BowlingPhysics {
 
   step() {
     this.world.step();
+  }
+
+  /** Pin indices (0–9) the ball is touching right now. */
+  ballPinContacts(): number[] {
+    const out: number[] = [];
+    this.world.contactPairsWith(this.ballCollider, (other) => {
+      const pin = this.pinByCollider.get(other.handle);
+      if (pin === undefined || out.includes(pin)) return;
+      this.world.contactPair(this.ballCollider, other, (manifold) => {
+        if (manifold.numContacts() > 0 && !out.includes(pin)) out.push(pin);
+      });
+    });
+    return out;
+  }
+
+  /** Pin numbers (1–10) still standing. */
+  standingPins(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.pins.length; i++) if (!this.isPinDown(i)) out.push(i + 1);
+    return out;
   }
 
   isPinDown(i: number): boolean {

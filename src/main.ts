@@ -11,8 +11,13 @@ import { attachControls, type ControlTarget } from './input/controls';
 import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
 import { createPinMesh, createTomatoBall } from './scene/models';
+import { Dave } from './scene/dave';
+import { buildDecor } from './scene/decor';
+import { Juice } from './scene/juice';
+import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
+import { SpeechBubble } from './ui/speech';
 
-type Phase = 'aiming' | 'charging' | 'rolling' | 'settling' | 'result' | 'sweeping';
+type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'sweeping';
 
 const MAX_X = LANE_HALF - BALL_RADIUS - 0.03;
 const MAX_ANGLE = (4 * Math.PI) / 180;
@@ -24,7 +29,12 @@ const AIM_SENSITIVITY = 0.2;
 const MIN_SPEED = 3; // a gentle roll (~7 mph)
 const MAX_SPEED = 11;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
-const RESULT_PAUSE = 2.2; // seconds before the pinsetter runs on its own
+const REACTION_AT = 1.1; // seconds of looking at the pins before cutting to Dave's reaction
+const RESULT_PAUSE = 3.6; // seconds before the pinsetter runs on its own
+// Where Dave stands relative to the ball: the ball sits in his right hand
+const DAVE_OFFSET_X = 0.3;
+const DAVE_Z = 0.62;
+const BALL_IN_HAND = new THREE.Vector3(0, -0.075, 0);
 
 const clamp = THREE.MathUtils.clamp;
 const $ = (id: string) => document.getElementById(id)!;
@@ -58,6 +68,11 @@ async function start() {
   });
   const ballMesh = createTomatoBall();
   scene.add(ballMesh);
+  buildDecor(scene);
+  const dave = new Dave();
+  scene.add(dave.root);
+  const juice = new Juice(scene);
+  const speech = new SpeechBubble($('speech'));
 
   const sweepBar = new THREE.Mesh(
     new THREE.BoxGeometry(OUTER_HALF * 2 + 0.1, 0.1, 0.04),
@@ -87,6 +102,11 @@ async function start() {
   let resultTime = 0;
   let downBefore = 0;
   let lastThrow = { speed: 0, spin: 0, knocked: 0 };
+  let reaction: ReactionKind = 'meh';
+  let reactionShown = false;
+  const splashed = new Set<number>();
+  let releaseBlend = 0; // eases the ball from Dave's hand down onto the lane
+  const releaseFrom = new THREE.Vector3();
 
   // ---- Game mode state ----
   type Mode = 'single' | 'pass' | 'practice';
@@ -126,6 +146,9 @@ async function start() {
     downBefore = physics.pinsDown();
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
+    splashed.clear();
+    releaseFrom.copy(ballMesh.position);
+    releaseBlend = 1;
     phase = 'rolling';
     settleTime = 0;
     setStatus(`Rolling… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
@@ -146,6 +169,13 @@ async function start() {
     lastThrow.knocked = knocked;
     phase = 'result';
     resultTime = 0;
+    reactionShown = false;
+    const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
+    reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
+    if (reaction === 'strike') {
+      // Extra-juicy strike
+      juice.splash(new THREE.Vector3(0, 0.25, HEAD_PIN_Z - 0.35), 1.5, new THREE.Vector3(0, 0, -1));
+    }
 
     if (mode === 'practice') {
       if (practiceRack) {
@@ -171,6 +201,8 @@ async function start() {
 
   function runPinsetter(setterMode: PinsetterMode) {
     phase = 'sweeping';
+    dave.idle();
+    speech.hide();
     physics.holdBall(aimX);
     setStatus(setterMode === 'clear' ? 'Clearing the deadwood…' : 'Setting the pins…');
     const rack = setterMode === 'rerack' && mode === 'practice' && practiceRack ? practiceRack : undefined;
@@ -206,9 +238,10 @@ async function start() {
     if (!match) return;
     const pos = match.position;
     const who = mode === 'pass' ? `${match.player.name}, ` : '';
-    if (pos.frame === 9 && pos.ball === 2) setStatus(`${who}bonus ball!`);
-    else if (pos.ball === 0) setStatus(pos.frame === 9 ? `${who}final frame!` : `${who}line up and throw!`);
-    else setStatus(pos.standing === 10 ? `${who}bonus ball!` : `${who}pick up the spare!`);
+    const say = (text: string) => setStatus(who ? who + text : text.charAt(0).toUpperCase() + text.slice(1));
+    if (pos.frame === 9 && pos.ball === 2) say('bonus ball!');
+    else if (pos.ball === 0) say(pos.frame === 9 ? 'final frame!' : 'line up and throw!');
+    else say(pos.standing === 10 ? 'bonus ball!' : 'pick up the spare!');
     updateReadout();
     renderScorecard(scorecardEl, match);
   }
@@ -225,6 +258,8 @@ async function start() {
     $('spin').hidden = id !== null;
     $('practice-panel').hidden = !(id === null && mode === 'practice');
     if (id === 'menu') {
+      dave.wave();
+      speech.hide();
       const best = storage.bestScore();
       $('menu-best').textContent = best > 0 ? `Your best: ${best}` : '';
     }
@@ -244,6 +279,8 @@ async function start() {
     physics.holdBall(aimX);
     pinsetter.cancel();
     phase = 'aiming';
+    dave.idle();
+    speech.hide();
     renderScorecard(scorecardEl, match);
     updatePracticeButtons();
     showScreen(null);
@@ -257,6 +294,8 @@ async function start() {
   function showGameOver() {
     if (!match) return;
     const totals = match.totals();
+    const top = Math.max(...totals);
+    dave.react(top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
     const body = $('go-body');
     if (match.players.length === 1) {
       const score = totals[0];
@@ -347,11 +386,14 @@ async function start() {
       const held = (performance.now() - chargeStart) / 1000;
       power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
       showPower(power, false);
-      launch(power, aim, spin);
+      const p = power;
+      phase = 'swinging';
+      dave.swing(() => launch(p, aim, spin));
     },
     cancelCharge() {
       if (phase !== 'charging') return;
       phase = 'aiming';
+      dave.idle();
       showPower(0, false);
       setStatus('Line up and throw!');
     },
@@ -360,14 +402,18 @@ async function start() {
       showPower(t.power, true);
       setTimeout(() => showPower(t.power, false), 700);
       aim = swipeDirectionToAim(t.direction);
-      launch(t.power, aim, t.spin);
+      phase = 'swinging';
+      dave.swing(() => launch(t.power, aim, t.spin));
     },
     swipePreview(direction) {
       if (openScreen === null && phase === 'aiming') aim = swipeDirectionToAim(direction);
     },
     advance() {
       if (openScreen === 'pass') showScreen(null);
-      else if (openScreen === null && phase === 'result') runPinsetter(nextSetter);
+      else if (openScreen === null && phase === 'result') {
+        if (resultTime < REACTION_AT) resultTime = REACTION_AT;
+        else runPinsetter(nextSetter);
+      }
     },
     rerack() {
       // Only in practice: in a real game the pinsetter follows the rules
@@ -460,18 +506,33 @@ async function start() {
   const wantPos = new THREE.Vector3();
   const wantLook = new THREE.Vector3();
 
+  const davePos = new THREE.Vector3();
   function updateCamera(dt: number) {
     const b = physics.ball.translation();
-    if (phase === 'aiming' || phase === 'charging') {
-      if (camera.aspect < 0.8) {
-        // Portrait: sit higher and further back so the ball clears the bottom of the screen
-        wantPos.set(aimX + 0.25, 1.9, 3.0);
-        wantLook.set(aimX * 0.3, 0, -11);
+    const portrait = camera.aspect < 0.8;
+    const dx = aimX - DAVE_OFFSET_X;
+    davePos.copy(dave.root.position);
+    const showDave =
+      openScreen === 'menu' || openScreen === 'gameover' || (phase === 'result' && resultTime >= REACTION_AT);
+
+    if (openScreen === 'menu' || openScreen === 'gameover') {
+      // Menu card sits low on the screen; frame Dave in the top half above it
+      wantPos.set(davePos.x + 0.5, 1.2, davePos.z - (portrait ? 4.6 : 3.4));
+      wantLook.set(davePos.x, portrait ? 0.15 : 0.55, davePos.z);
+    } else if (showDave) {
+      // Face-on shot of Dave from down the lane
+      wantPos.set(davePos.x + 0.35, 1.35, davePos.z - (portrait ? 3.6 : 2.7));
+      wantLook.set(davePos.x, portrait ? 1.15 : 1.4, davePos.z);
+    } else if (phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping') {
+      // Over Dave's right shoulder
+      if (portrait) {
+        wantPos.set(dx + 0.7, 2.15, DAVE_Z + 2.3);
+        wantLook.set(aimX * 0.4, 0, -9.5);
       } else {
-        wantPos.set(aimX + 0.35, 1.45, 2.3);
-        wantLook.set(aimX * 0.3, 0, -16);
+        wantPos.set(dx + 0.75, 1.75, DAVE_Z + 1.7);
+        wantLook.set(aimX * 0.4, 0, -14);
       }
-    } else if (phase === 'rolling') {
+    } else if (phase === 'rolling' || phase === 'settling') {
       const z = Math.max(b.z + 3.2, HEAD_PIN_Z + 4.2);
       wantPos.set(b.x * 0.5, THREE.MathUtils.lerp(0.75, 1.4, clamp(z / 2, 0, 1)), z);
       wantLook.set(b.x * 0.5, 0.1, Math.max(b.z - 6, HEAD_PIN_Z - 0.4));
@@ -479,12 +540,16 @@ async function start() {
       wantPos.set(0, 0.85, HEAD_PIN_Z + 3.6);
       wantLook.set(0, 0.15, HEAD_PIN_Z - 0.4);
     }
-    const k = 1 - Math.exp(-dt * (phase === 'rolling' ? 6 : 3));
+    // Cut (rather than glide) when switching to or from the reaction shot
+    const cut = showDave !== lastShowDave;
+    lastShowDave = showDave;
+    const k = cut ? 1 : 1 - Math.exp(-dt * (phase === 'rolling' ? 6 : 3));
     camPos.lerp(wantPos, k);
     camLook.lerp(wantLook, k);
     camera.position.copy(camPos);
     camera.lookAt(camLook);
   }
+  let lastShowDave = false;
 
   // ---- Per-frame updates ----
   const tmp = new THREE.Vector3();
@@ -514,10 +579,34 @@ async function start() {
       pinMeshes[i].position.set(p.x, p.y, p.z);
       pinMeshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
-    const p = physics.ball.translation();
-    const q = physics.ball.rotation();
-    ballMesh.position.set(p.x, p.y, p.z);
-    ballMesh.quaternion.set(q.x, q.y, q.z, q.w);
+    const held = phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping';
+    if (held) {
+      dave.handWorldPosition(ballMesh.position).add(BALL_IN_HAND);
+      ballMesh.quaternion.identity();
+    } else {
+      const p = physics.ball.translation();
+      const q = physics.ball.rotation();
+      ballMesh.position.set(p.x, p.y, p.z);
+      if (releaseBlend > 0) ballMesh.position.lerp(releaseFrom, releaseBlend * releaseBlend);
+      ballMesh.quaternion.set(q.x, q.y, q.z, q.w);
+    }
+  }
+
+  const splashAt = new THREE.Vector3();
+  const splashDir = new THREE.Vector3();
+  function updateJuice() {
+    if (phase !== 'rolling' && phase !== 'settling') return;
+    for (const pin of physics.ballPinContacts()) {
+      if (splashed.has(pin)) continue;
+      splashed.add(pin);
+      const b = physics.ball.translation();
+      const v = physics.ball.linvel();
+      const pp = physics.pins[pin].translation();
+      splashAt.set((b.x + pp.x) / 2, 0.14, (b.z + pp.z) / 2);
+      splashDir.set(v.x, 0, v.z).normalize();
+      const strength = clamp(Math.hypot(v.x, v.z) / 9, 0.25, 1) * (splashed.size === 1 ? 1 : 0.6);
+      juice.splash(splashAt, strength, splashDir);
+    }
   }
 
   function updatePhase(dt: number) {
@@ -526,6 +615,7 @@ async function start() {
       const held = (performance.now() - chargeStart) / 1000;
       power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
       showPower(power, true);
+      dave.charge(power);
     } else if (phase === 'rolling') {
       const b = physics.ball.translation();
       const v = physics.ball.linvel();
@@ -539,6 +629,11 @@ async function start() {
       if ((settleTime > 2 && physics.isSettled()) || settleTime > 6) finishThrow();
     } else if (phase === 'result' && openScreen === null) {
       resultTime += dt;
+      if (resultTime >= REACTION_AT && !reactionShown) {
+        reactionShown = true;
+        dave.react(reaction);
+        speech.show(pickLine(reaction));
+      }
       if (resultTime > RESULT_PAUSE) runPinsetter(nextSetter);
     }
   }
@@ -560,11 +655,17 @@ async function start() {
     if (steps === 12) acc = 0;
 
     updatePhase(dt);
+    if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') dave.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
+    dave.update(dt);
+    releaseBlend = Math.max(0, releaseBlend - dt / 0.15);
     syncMeshes();
+    updateJuice();
+    juice.update(dt);
     updateAimLine();
     updateCamera(dt);
     input.update(dt);
     renderer.render(scene, camera);
+    speech.update(dave, camera);
     requestAnimationFrame(frame);
   }
 

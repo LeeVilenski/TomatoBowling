@@ -280,3 +280,38 @@ html, body {
 }
 .results li.win { background: rgba(224, 38, 27, 0.3); font-weight: 800; }
 .big-score { font-size: 64px; font-weight: 800; color: #ff4a3a; line-height: 1; margin: 8px 0; }
+
+/* ---------- Dave's speech bubble ---------- */
+#speech {
+  position: fixed;
+  left: 0;
+  top: 0;
+  max-width: min(260px, 70vw);
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: #fffaf0;
+  color: #2a1206;
+  font-size: 19px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  pointer-events: none;
+  z-index: 5;
+}
+#speech::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  margin-left: -10px;
+  border: 12px solid transparent;
+  border-bottom: 0;
+  border-top-color: #fffaf0;
+}
+#speech.pop { animation: pop 0.25s cubic-bezier(0.3, 1.6, 0.6, 1); }
+@keyframes pop { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
+
+/* Menu and game-over cards sit low so Dave is visible above them */
+#menu, #gameover { align-items: end; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+#menu .logo { display: none; }
+@media (min-height: 700px) and (min-width: 700px) { #menu, #gameover { padding-bottom: 6vh; } }

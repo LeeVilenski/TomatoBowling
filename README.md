@@ -2,7 +2,9 @@
 
 A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the full plan.
 
-**Current state: Stage 3.** It's a playable bowling game with three modes:
+**Current state: Stage 4.** Tomato Dave is in! He holds the ball, swings and slides into each throw, then reacts to every result with a speech bubble (strikes, spares, splits, gutters...). Tomato juice splashes when the ball hits the pins, and the alley has a neon sign, a ball return and neighbouring lanes.
+
+There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.
 - **Pass & Play:** 2–4 players take turns on one device. A "pass the device" screen appears between turns.
@@ -18,6 +20,11 @@ npm run dev            # http://localhost:5173
 npm run build          # type-check + production build into dist/
 npm test               # unit tests
 npm run check:physics  # simulate test throws without a browser
+```
+
+Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view).
+
+```bash
 ```
 
 ## Controls
