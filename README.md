@@ -18,7 +18,9 @@ npm run check:physics  # simulate test throws without a browser
 
 **Touch screens**
 - Drag sideways to move along the foul line.
-- Swipe up to throw. A faster swipe gives more power, the swipe's angle sets your aim, and curving the swipe adds spin.
+- Swipe up to throw. A faster flick gives more power.
+- Aim by tilting the start of your swipe left or right. The yellow line shows where you're aiming while you swipe.
+- Bend the end of your swipe to add spin. The ball curves the same way, late in the lane.
 
 **Mouse and keyboard**
 

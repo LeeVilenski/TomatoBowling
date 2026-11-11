@@ -8,19 +8,19 @@ export interface SwipePoint {
 
 export interface SwipeThrow {
   power: number; // 0–1
-  aim: number; // -1 (full left) to 1 (full right)
+  /** On-screen direction the swipe starts in: radians from straight up, positive = right. */
+  direction: number;
   spin: number; // -1 (hooks left) to 1 (hooks right)
 }
 
 const MIN_UP_FRACTION = 0.12; // swipe must travel at least 12% of the screen height upward
 const SPEED_WINDOW_MS = 150; // flick speed is measured over the last part of the swipe
-const SLOW_FLICK = 1.0; // screen heights per second = power 0
-const FAST_FLICK = 4.0; // screen heights per second = power 1
-const FULL_AIM_ANGLE = 0.9; // radians (~50°) of on-screen swipe angle = full aim
-const AIM_DEAD_ZONE = 0.06; // a swipe within ~3° of straight up throws straight
+const SLOW_FLICK = 0.4; // screen heights per second = power 0
+const FAST_FLICK = 2.4; // screen heights per second = power 1
+const AIM_DEAD_ZONE = 0.03; // a swipe within ~2° of straight up throws straight
 const FULL_SPIN_TURN = 0.45; // radians of curve between start and end of swipe = full spin
 const SPIN_DEAD_ZONE = 0.06; // ignore tiny wobbles so straight swipes stay straight
-const START_FRACTION = 0.35; // aim comes from the first 35% of the swipe
+const START_FRACTION = 0.3; // aim comes from the first 30% of the swipe
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -42,6 +42,12 @@ function indexAtFraction(points: SwipePoint[], fraction: number) {
   return Math.max(1, points.length - 2);
 }
 
+/** Direction of the first part of a swipe (also used to preview aim while swiping). */
+export function swipeStartDirection(points: SwipePoint[]): number {
+  if (points.length < 2) return 0;
+  return direction(points[0], points[indexAtFraction(points, START_FRACTION)]);
+}
+
 export function analyzeSwipe(points: SwipePoint[], viewHeight: number): SwipeThrow | null {
   if (points.length < 3) return null;
   const first = points[0];
@@ -60,14 +66,12 @@ export function analyzeSwipe(points: SwipePoint[], viewHeight: number): SwipeThr
 
   // Aim from the direction the swipe *starts* in, so curving it adds spin
   // without also pulling the aim off to the side.
-  const startIdx = indexAtFraction(points, START_FRACTION);
-  const startDir = direction(first, points[startIdx]);
-  const aim = clamp(deadZone(startDir, AIM_DEAD_ZONE) / FULL_AIM_ANGLE, -1, 1);
+  const startDir = swipeStartDirection(points);
 
   // Spin from how much the swipe bends: start direction vs end direction
   const endIdx = indexAtFraction(points, 1 - START_FRACTION);
   const endDir = direction(points[endIdx], last);
   const spin = clamp(deadZone(endDir - startDir, SPIN_DEAD_ZONE) / FULL_SPIN_TURN, -1, 1);
 
-  return { power, aim, spin };
+  return { power, direction: deadZone(startDir, AIM_DEAD_ZONE), spin };
 }

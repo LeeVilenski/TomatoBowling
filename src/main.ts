@@ -12,6 +12,11 @@ type Phase = 'aiming' | 'charging' | 'rolling' | 'settling' | 'result' | 'sweepi
 
 const MAX_X = LANE_HALF - BALL_RADIUS - 0.03;
 const MAX_ANGLE = (4 * Math.PI) / 180;
+const ARROWS_Z = -4.57; // the targeting arrows, 15 ft down the lane
+const BALL_START_Z = -0.3;
+// Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
+// the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
+const AIM_SENSITIVITY = 0.2;
 const MIN_SPEED = 5;
 const MAX_SPEED = 11;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
@@ -139,6 +144,26 @@ async function start() {
     });
   }
 
+  /**
+   * Turns an on-screen swipe direction into an aim: follow the swipe's line from the ball
+   * up to the targeting arrows and aim the ball over that spot, like a real bowler.
+   */
+  const toScreen = (x: number, z: number) => {
+    const v = new THREE.Vector3(x, 0, z).project(camera);
+    return { x: ((v.x + 1) / 2) * window.innerWidth, y: ((1 - v.y) / 2) * window.innerHeight };
+  };
+  function swipeDirectionToAim(direction: number) {
+    const ball = toScreen(aimX, BALL_START_Z);
+    const arrow = toScreen(aimX, ARROWS_Z);
+    const pxPerMetre = toScreen(aimX + 1, ARROWS_Z).x - arrow.x;
+    // Measured relative to the lane's own direction on screen (the camera sits a little to
+    // one side, so straight down the lane isn't exactly straight up the screen)
+    const targetX = arrow.x + Math.tan(direction) * (ball.y - arrow.y) * AIM_SENSITIVITY;
+    const sideways = (targetX - arrow.x) / pxPerMetre;
+    const angle = Math.atan2(sideways, BALL_START_Z - ARROWS_Z);
+    return clamp(angle / MAX_ANGLE, -1, 1);
+  }
+
   const controls: ControlTarget = {
     canAim: () => phase === 'aiming' || phase === 'charging',
     isCharging: () => phase === 'charging',
@@ -185,7 +210,11 @@ async function start() {
       if (phase !== 'aiming') return;
       showPower(t.power, true);
       setTimeout(() => showPower(t.power, false), 700);
-      launch(t.power, t.aim, t.spin);
+      aim = swipeDirectionToAim(t.direction);
+      launch(t.power, aim, t.spin);
+    },
+    swipePreview(direction) {
+      if (phase === 'aiming') aim = swipeDirectionToAim(direction);
     },
     advance() {
       if (phase === 'result') runPinsetter(nextSetter);

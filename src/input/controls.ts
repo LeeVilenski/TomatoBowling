@@ -1,4 +1,4 @@
-import { analyzeSwipe, type SwipePoint, type SwipeThrow } from './swipe';
+import { analyzeSwipe, swipeStartDirection, type SwipePoint, type SwipeThrow } from './swipe';
 
 /** What the input layer can ask the game to do. */
 export interface ControlTarget {
@@ -14,6 +14,8 @@ export interface ControlTarget {
   releaseCharge(): void;
   cancelCharge(): void;
   swipeThrow(t: SwipeThrow): void;
+  /** Live aim preview while a swipe is in progress (on-screen direction in radians). */
+  swipePreview(direction: number): void;
   /** Skip the wait after a throw. */
   advance(): void;
   rerack(): void;
@@ -72,7 +74,11 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
       game.advance();
       return;
     }
-    canvas.setPointerCapture(e.pointerId);
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is only a nicety (keeps the swipe if the finger leaves the canvas)
+    }
     touch = { id: e.pointerId, mode: 'undecided', lastX: e.clientX, points: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }] };
     trailPoints = touch.points;
     trailFade = 1;
@@ -105,6 +111,8 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
       touch.lastX = pt.x;
     } else {
       touch.points.push(...pts);
+      const up = touch.points[0].y - pt.y;
+      if (touch.mode === 'swipe' && up > 30) game.swipePreview(swipeStartDirection(touch.points));
     }
   });
 

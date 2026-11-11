@@ -21,12 +21,18 @@ describe('analyzeSwipe', () => {
 
   it('a straight swipe up has no aim or spin', () => {
     const r = analyzeSwipe(swipe((s) => [200, 700 - s * 400], 250), H)!;
-    expect(r.aim).toBeCloseTo(0);
+    expect(r.direction).toBeCloseTo(0);
     expect(r.spin).toBe(0);
   });
 
+  it('an ordinary thumb flick gets decent power', () => {
+    // ~45% of the screen in a quarter of a second
+    const r = analyzeSwipe(swipe((s) => [200, 700 - s * 360], 250), H)!;
+    expect(r.power).toBeGreaterThan(0.5);
+  });
+
   it('a faster flick gives more power', () => {
-    const slow = analyzeSwipe(swipe((s) => [200, 700 - s * 400], 600), H)!;
+    const slow = analyzeSwipe(swipe((s) => [200, 700 - s * 400], 900), H)!;
     const fast = analyzeSwipe(swipe((s) => [200, 700 - s * 400], 120), H)!;
     expect(fast.power).toBeGreaterThan(slow.power);
     expect(fast.power).toBe(1);
@@ -35,15 +41,15 @@ describe('analyzeSwipe', () => {
   it('a slanted swipe aims that way', () => {
     const right = analyzeSwipe(swipe((s) => [200 + s * 100, 700 - s * 400], 250), H)!;
     const left = analyzeSwipe(swipe((s) => [200 - s * 100, 700 - s * 400], 250), H)!;
-    expect(right.aim).toBeGreaterThan(0.2);
-    expect(left.aim).toBeLessThan(-0.2);
+    expect(right.direction).toBeGreaterThan(0.15);
+    expect(left.direction).toBeLessThan(-0.15);
     expect(right.spin).toBe(0);
   });
 
   it('a swipe that curves right at the end spins right without changing the aim much', () => {
     const r = analyzeSwipe(swipe((s) => [200 + 150 * s * s, 700 - s * 400], 250), H)!;
     expect(r.spin).toBeGreaterThan(0.3);
-    expect(Math.abs(r.aim)).toBeLessThan(0.15);
+    expect(Math.abs(r.direction)).toBeLessThan(0.1);
     const l = analyzeSwipe(swipe((s) => [200 - 150 * s * s, 700 - s * 400], 250), H)!;
     expect(l.spin).toBeLessThan(-0.3);
   });
@@ -56,7 +62,7 @@ describe('analyzeSwipe', () => {
 
   it('a slightly wonky straight swipe stays straight', () => {
     const r = analyzeSwipe(swipe((s) => [200 + 8 * s, 700 - s * 400], 250), H)!;
-    expect(r.aim).toBe(0);
+    expect(r.direction).toBe(0);
     expect(r.spin).toBe(0);
   });
 
