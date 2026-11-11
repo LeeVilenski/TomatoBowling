@@ -89,8 +89,6 @@ function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y:
 }
 
 export function buildAlley(scene: THREE.Scene) {
-  scene.background = new THREE.Color('#1b1026');
-  scene.fog = new THREE.Fog('#1b1026', 18, 40);
 
   // Lane surface (approach + lane + deck)
   const laneLen = APPROACH_START_Z - DECK_END_Z;
@@ -156,14 +154,10 @@ export function buildAlley(scene: THREE.Scene) {
   const stripeMat = new THREE.MeshStandardMaterial({ color: '#3fae3a', emissive: '#0c2a0a' });
   scene.add(box(OUTER_HALF * 2 + 0.6, 0.06, 0.09, stripeMat, 0, 0.72, DECK_END_Z + 0.4));
 
-  // Back wall and floor of the room
-  const wallMat = new THREE.MeshStandardMaterial({ color: '#2a1838', roughness: 0.9 });
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(30, 8), wallMat);
-  wall.position.set(0, 3, PIT_END_Z - 0.2);
-  scene.add(wall);
 
   // Lighting
-  scene.add(new THREE.HemisphereLight('#fff3e0', '#2a1838', 1.1));
+  const hemi = new THREE.HemisphereLight('#fff3e0', '#2a1838', 1.1);
+  scene.add(hemi);
   const key = new THREE.DirectionalLight('#ffffff', 1.6);
   key.position.set(1.5, 6, -14);
   key.target.position.set(0, 0, -18.8);
@@ -184,5 +178,5 @@ export function buildAlley(scene: THREE.Scene) {
   fill.position.set(-2, 4, 3);
   fill.target.position.set(0, 0, -8);
   scene.add(fill, fill.target);
-  return { keyLight: key };
+  return { keyLight: key, hemi, fill };
 }

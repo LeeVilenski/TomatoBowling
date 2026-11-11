@@ -10,6 +10,7 @@ import {
   PIN_MASS,
   PIN_PROFILE,
   PIT_DEPTH,
+  HEAD_PIN_Z,
   PIT_END_Z,
   gutterPlates,
   pinSpots,
@@ -50,6 +51,15 @@ export class BowlingPhysics {
   private ballCollider!: RAPIER.Collider;
   private lane!: RAPIER.Collider;
   ballRadius = BALL_RADIUS;
+  /** Random source (swappable for tests). */
+  rng: () => number = Math.random;
+  /** The stem can catch the lane and make the ball hop (see stemCheck). */
+  stemBumps = true;
+  /** Set when a stem hop happens; the game reads and clears it to play a sound. */
+  bumped = false;
+  private bumpCount = 0;
+  private stemWasDown = false;
+  private throwSpeed = 8;
   private pinByCollider = new Map<number, number>();
   private readonly spots = pinSpots();
 
@@ -189,6 +199,17 @@ export class BowlingPhysics {
     // That keeps full spin worth a similar, visible hook at any speed.
     const w = spin * MAX_SPIN * Math.pow(speed / 8, SPIN_SPEED_SCALING);
     this.ball.setAngvel({ x: dx * w, y: 0, z: dz * w }, true);
+
+    // Leave the hand at a random angle: where the stem sits decides when (and whether) it
+    // catches the lane on the way down. Mostly side-on to the roll, so it usually does.
+    const phase = this.rng() * Math.PI * 2;
+    const tilt = (this.rng() - 0.5) * 1.0;
+    const q1 = { x: Math.sin(phase / 2), y: 0, z: 0, w: Math.cos(phase / 2) }; // spin about the rolling axis
+    const q2 = { x: 0, y: 0, z: Math.sin(tilt / 2), w: Math.cos(tilt / 2) }; // lean the stem off-centre
+    this.ball.setRotation(mulQuat(q2, q1), true);
+    this.throwSpeed = speed;
+    this.bumped = false;
+    this.bumpCount = 0;
   }
 
   /** Put every pin back on its spot, upright. */
@@ -238,7 +259,33 @@ export class BowlingPhysics {
   step() {
     // Oily front of the lane, dry back end: the ball skids, then grips and hooks
     this.lane.setFriction(this.ball.translation().z > OIL_END_Z ? OIL_FRICTION : DRY_FRICTION);
+    if (this.stemBumps) this.stemCheck();
     this.world.step();
+  }
+
+  /**
+   * The tomato isn't a perfect sphere: when its stem rolls round to the bottom it can catch
+   * the lane and give the ball a little hop. At most once per throw, at a random moment.
+   */
+  private stemCheck() {
+    if (this.bumpCount > 0 || this.ball.bodyType() !== RAPIER.RigidBodyType.Dynamic) return;
+    const p = this.ball.translation();
+    const onLane = p.y < this.ballRadius + 0.004 && Math.abs(p.x) < LANE_HALF - this.ballRadius && p.z < -1.5 && p.z > HEAD_PIN_Z + 1.2;
+    if (!onLane) return;
+    // Y component of the ball's local "up" (where the stem points)
+    const q = this.ball.rotation();
+    const stemY = 1 - 2 * (q.x * q.x + q.z * q.z);
+    const down = stemY < -0.9;
+    if (down && !this.stemWasDown && this.rng() < 0.3) {
+      const v = this.ball.linvel();
+      const scale = Math.min(1.3, Math.max(0.5, this.throwSpeed / 8));
+      const up = (0.6 + this.rng() * 1.0) * scale; // ~2–13 cm hop
+      const side = (this.rng() - 0.5) * 0.16;
+      this.ball.setLinvel({ x: v.x + side, y: v.y + up, z: v.z }, true);
+      this.bumpCount++;
+      this.bumped = true;
+    }
+    this.stemWasDown = down;
   }
 
   /** Swap to a different-sized ball (same weight), e.g. the cherry tomato. */
@@ -311,4 +358,14 @@ function pinHullPoints(): Float32Array {
     }
   }
   return new Float32Array(pts);
+}
+
+type Quat = { x: number; y: number; z: number; w: number };
+function mulQuat(a: Quat, b: Quat): Quat {
+  return {
+    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  };
 }

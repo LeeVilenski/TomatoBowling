@@ -15,6 +15,8 @@ import { BALL_STYLES, createPinMesh, createTomatoBall } from './scene/models';
 import { GameTracker, ITEMS, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
 import { Dave } from './scene/dave';
 import { buildDecor } from './scene/decor';
+import { ReturnChute } from './scene/chute';
+import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
 import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
@@ -65,7 +67,10 @@ async function start() {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.18;
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
-  const { keyLight } = buildAlley(scene);
+  const { keyLight, hemi, fill } = buildAlley(scene);
+  const venues = new VenueManager(scene, { hemi, key: keyLight, fill });
+  const chute = new ReturnChute();
+  scene.add(chute.group);
 
   const physics = await BowlingPhysics.create();
 
@@ -113,6 +118,22 @@ async function start() {
   const juice = new Juice(scene);
   const speech = new SpeechBubble($('speech'));
   const sound = new Sound();
+  // Venue: where Dave bowls (each has its own look and music)
+  function selectVenue(id: VenueId) {
+    venues.select(id);
+    sound.setTrack(venues.current.track);
+    storage.saveText('venue', id);
+    $('venue-name').textContent = `📍 ${venues.current.name}`;
+  }
+  const savedVenue = storage.text('venue', 'classic') as VenueId;
+  selectVenue(VENUES.some((v) => v.id === savedVenue) ? savedVenue : 'classic');
+  const stepVenue = (dir: number) => {
+    const i = VENUES.findIndex((v) => v.id === venues.current.id);
+    selectVenue(VENUES[(i + dir + VENUES.length) % VENUES.length].id);
+  };
+  $('venue-prev').addEventListener('click', () => stepVenue(-1));
+  $('venue-next').addEventListener('click', () => stepVenue(1));
+  $('venue-name').addEventListener('click', () => stepVenue(1));
   // Browsers only allow audio after the player interacts with the page
   const unlockAudio = () => sound.unlock();
   window.addEventListener('pointerdown', unlockAudio, true);
@@ -853,8 +874,12 @@ async function start() {
       pinMeshes[i].position.set(p.x, p.y, p.z);
       pinMeshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
-    const held = phase === 'aiming' || phase === 'charging' || phase === 'swinging' || phase === 'sweeping';
-    if (held) {
+    const held = phase === 'aiming' || phase === 'charging' || phase === 'swinging';
+    ballMesh.visible = true;
+    if (phase === 'sweeping') {
+      // The tomato rolls home along the return chute while the pinsetter works
+      ballMesh.visible = chute.ballAt(pinsetter.elapsed, physics.ballRadius, ballMesh);
+    } else if (held) {
       dave.handWorldPosition(ballMesh.position).add(BALL_IN_HAND);
       ballMesh.quaternion.identity();
     } else {
@@ -966,6 +991,11 @@ async function start() {
     updateJuice();
     juice.update(dt * timeScale);
     updateSounds();
+    venues.update(dt);
+    if (physics.bumped) {
+      physics.bumped = false;
+      sound.bump();
+    }
     updateAimLine();
     updateCamera(dt);
     input.update(dt);

@@ -31,6 +31,11 @@ export class Pinsetter {
   private onDone: (() => void) | null = null;
   active = false;
 
+  /** Seconds since this cycle started (the ball return animation follows it). */
+  get elapsed() {
+    return this.time;
+  }
+
   constructor(
     private physics: BowlingPhysics,
     private sweep: THREE.Object3D,

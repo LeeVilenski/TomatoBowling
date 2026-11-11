@@ -3,7 +3,7 @@
 // tap/click/key press (`unlock`).
 
 import { storage } from '../save/storage';
-import { LoungeMusic, makeNoise } from './music';
+import { makeNoise, MusicPlayer, type TrackId } from './music';
 
 const LOOKAHEAD = 0.4; // seconds of music kept queued
 const MUSIC_MENU = 0.55;
@@ -15,7 +15,8 @@ export class Sound {
   private master!: GainNode;
   private musicBus!: GainNode;
   private sfxBus!: GainNode;
-  private music!: LoungeMusic;
+  private music: MusicPlayer | null = null;
+  private track: TrackId = 'lounge';
   private noise!: AudioBuffer;
   private rollGain!: GainNode;
   private rollFilter!: BiquadFilterNode;
@@ -95,10 +96,11 @@ export class Sound {
     } catch {
       // No custom track (or it couldn't play): fall back to the built-in tune
     }
-    this.music = new LoungeMusic(ctx, this.musicBus);
-    this.music.start();
-    window.setInterval(() => this.music.schedule(ctx.currentTime + LOOKAHEAD), 60);
-    this.music.schedule(ctx.currentTime + LOOKAHEAD);
+    const music = new MusicPlayer(ctx, this.musicBus);
+    this.music = music;
+    music.play(this.track);
+    window.setInterval(() => music.schedule(ctx.currentTime + LOOKAHEAD), 60);
+    music.schedule(ctx.currentTime + LOOKAHEAD);
   }
 
   private applyLevels(instant = false) {
@@ -107,6 +109,12 @@ export class Sound {
     const set = (p: AudioParam, v: number) => (instant ? p.setValueAtTime(v, t) : p.setTargetAtTime(v, t, 0.4));
     set(this.musicBus.gain, this.musicOn ? this.musicLevel : 0);
     set(this.sfxBus.gain, this.sfxOn ? 0.9 : 0);
+  }
+
+  /** Switch the music track (each venue has its own). */
+  setTrack(id: TrackId) {
+    this.track = id;
+    this.music?.play(id);
   }
 
   /** Louder music in the menus, softer during play. */
@@ -215,6 +223,14 @@ export class Sound {
     this.tone(t, 'sine', 1100 + Math.random() * 600, 900, 0.22 * s, 0.07);
     this.tone(t, 'triangle', 420 + Math.random() * 120, 380, 0.16 * s, 0.05);
     this.burst(t, 'bandpass', 2600, 2000, 1.2, 0.25 * s, 0.045);
+  }
+
+  /** The tomato's stem catching the lane: a soft little thup. */
+  bump() {
+    if (!this.ready) return;
+    const t = this.ctx!.currentTime;
+    this.tone(t, 'sine', 210, 90, 0.35, 0.09);
+    this.burst(t, 'lowpass', 900, 400, 0.7, 0.18, 0.04);
   }
 
   gutter() {

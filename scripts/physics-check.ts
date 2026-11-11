@@ -6,6 +6,10 @@ import { Object3D } from 'three';
 
 async function main() {
   const ph = await BowlingPhysics.create();
+  // Repeatable runs: no random stem hops for the scoring checks, and a fixed seed for the hop test
+  ph.stemBumps = false;
+  let seed = 12345;
+  ph.rng = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const run = (steps: number) => {
     for (let i = 0; i < steps; i++) ph.step();
   };
@@ -40,7 +44,7 @@ async function main() {
     check(ballY > -0.6, `${s.name}: ball stays inside the alley (y ${ballY.toFixed(2)})`);
   }
 
-  // The ball should never bounce off the lane on its way down
+  // With stem hops switched off, the lane itself must never make the ball bounce
   for (const speed of [3, 6, 8, 11]) {
     for (const spin of [0, 1]) {
       ph.resetPins();
@@ -56,6 +60,33 @@ async function main() {
       check(highest < 0.01, `ball stays on the lane at ${speed} m/s${spin ? ' with spin' : ''} (max lift ${(highest * 100).toFixed(1)} cm)`);
     }
   }
+
+  // Stem hops: small, at different points each throw, and not on every throw
+  ph.stemBumps = true;
+  const hops: number[] = [];
+  let biggest = 0;
+  for (let t = 0; t < 30; t++) {
+    ph.resetPins();
+    for (const i of ph.pins.keys()) ph.removePin(i);
+    ph.holdBall(0);
+    run(5);
+    ph.throwBall({ x: 0, angle: 0, speed: 8 });
+    let lift = 0;
+    let at: number | null = null;
+    for (let i = 0; i < 2400 && ph.ball.translation().z > -17.5; i++) {
+      ph.step();
+      if (ph.bumped && at === null) at = -ph.ball.translation().z;
+      lift = Math.max(lift, ph.ball.translation().y - ph.ballRadius);
+    }
+    ph.bumped = false;
+    if (at !== null) hops.push(at);
+    biggest = Math.max(biggest, lift);
+  }
+  const spread = hops.length ? Math.max(...hops) - Math.min(...hops) : 0;
+  console.log(`     stem hops in ${hops.length}/30 throws, at ${hops.map((h) => h.toFixed(1)).join(', ')} m`);
+  check(hops.length >= 10 && hops.length < 30, `stem hops happen on most throws but not all (${hops.length}/30)`);
+  check(spread > 4, `hops happen at different points down the lane (spread ${spread.toFixed(1)} m)`);
+  check(biggest > 0.01 && biggest < 0.16, `hops are small (biggest ${(biggest * 100).toFixed(1)} cm)`);
 
   // Pinsetter: after a first ball, standing pins come back and fallen ones are cleared
   const setter = new Pinsetter(ph, new Object3D());

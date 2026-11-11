@@ -24,6 +24,17 @@ To use your own music instead, add an MP3 at `public/audio/music.mp3` and it wil
 
 Also: a "How to bowl" card on your first game (and in the pause menu), a Graphics High/Low setting for older phones (picked automatically at first), and a phone buzz on strikes where supported.
 
+**Venues:** pick where Dave bowls from the 📍 button on the menu. Each has its own look and its own original music track:
+
+| Venue | Look | Music |
+|---|---|---|
+| Tomato Dave's | Retro alley with wall murals, glowing lane edges and overhead screens | "Tomato Lounge" (swing) |
+| Server Room Lanes | Racks of blinking servers, cable trays, a terminal screen | "Packet Loss" (chiptune) |
+| Disco Inferno | Mirror ball, sweeping spotlights, flashing dance floor | "Disco Dave" (disco) |
+| Rooftop at Sunset | Open sky, city skyline, string lights | "Bossa Marinara" (bossa nova) |
+
+After each throw the tomato rolls home along a ball return chute between the lanes. And the tomato isn't perfectly round: when its stem rolls under, it can give the ball a small hop at a random point down the lane.
+
 There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.

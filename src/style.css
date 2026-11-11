@@ -418,3 +418,22 @@ html, body {
   z-index: 6;
 }
 #ff-btn[aria-pressed="true"] { background: #e0261b; }
+
+/* Venue picker on the menu */
+.venue-picker { display: flex; gap: 6px; }
+.card .venue-picker button { height: 44px; }
+.card .venue-picker #venue-prev, .card .venue-picker #venue-next { width: 44px; flex: none; font-size: 16px; }
+.card .venue-picker #venue-name { flex: 1; font-size: 15px; background: #2f1c44; border: 2px solid #4a2e66; }
+
+/* Keep the main menu compact on phones so Dave stays visible above it */
+@media (max-height: 900px) {
+  #menu .card { padding: 16px 16px 14px; }
+  #menu .card h1 { font-size: 26px; }
+  #menu .card .sub { margin: 2px 0 10px; font-size: 12px; }
+  #menu .buttons { gap: 7px; margin-top: 8px; }
+  #menu .card button { height: 42px; font-size: 16px; }
+  #menu .toggles { margin-top: 8px; }
+  #menu .card .toggle { height: 36px; font-size: 12px; }
+  #menu .card .venue-picker button { height: 40px; }
+  #menu-best { margin: 4px 0 0; }
+}
