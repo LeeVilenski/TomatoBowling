@@ -183,17 +183,19 @@ export function buildAlley(scene: THREE.Scene) {
   return { keyLight: key, hemi, fill };
 }
 
-/** Underside of the pinsetter hood above the pins (the replay camera hangs just below it). */
+/** Underside of the pinsetter hood above the pins. */
 export const HOOD_CEILING_Y = 1.2;
 /** Front of the hood: the back of the masking unit. */
 const HOOD_FRONT_Z = DECK_END_Z + 0.36;
 const HOOD_BACK_Z = PIT_END_Z - 0.1;
+/** Bottom edge of the masking unit (the replay camera peeks out just under this). */
+export const MASK_BOTTOM_Y = 0.95 - 0.55 / 2;
 
 /**
  * The enclosure over the pin deck: a ceiling running from the masking unit back to the
  * wall, closed in at the sides, with a strip of deck lights and the pinsetter's rails.
- * It sits behind the masking panel, so from the approach it's barely seen; it's what
- * frames the replay camera's view.
+ * It sits behind the masking panel, so from the approach it's barely seen; the replay
+ * camera looks out from inside it.
  */
 function buildPinsetterHood(scene: THREE.Scene) {
   const len = HOOD_FRONT_Z - HOOD_BACK_Z;
@@ -212,6 +214,12 @@ function buildPinsetterHood(scene: THREE.Scene) {
   for (const side of [-1, 1]) add(box(0.06, sideH, len, shell, side * (OUTER_HALF + 0.03), 0.7 + sideH / 2, midZ));
   // Back panel, from the top of the cushion up to the ceiling
   add(box(halfW * 2 + 0.12, HOOD_CEILING_Y - 0.6, 0.04, shell, 0, (HOOD_CEILING_Y + 0.6) / 2, HOOD_BACK_Z));
+
+  // Back of the masking unit, as seen from inside: plain and dark, with a lip along the
+  // bottom edge. The replay camera looks out from under it.
+  const backH = HOOD_CEILING_Y - MASK_BOTTOM_Y;
+  add(box(halfW * 2 + 0.12, backH, 0.02, shell, 0, MASK_BOTTOM_Y + backH / 2, HOOD_FRONT_Z - 0.011));
+  add(box(halfW * 2 + 0.12, 0.03, 0.06, metal, 0, MASK_BOTTOM_Y + 0.015, HOOD_FRONT_Z - 0.03));
 
   // Deck lights: a glowing strip across the front, just behind the masking unit
   const glow = new THREE.MeshBasicMaterial({ color: '#fff1d6', toneMapped: false });

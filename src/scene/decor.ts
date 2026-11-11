@@ -46,10 +46,7 @@ export function neonSign(title: string, sub: string, titleColour: string, subCol
   return sign;
 }
 
-/**
- * Marks parts of the masking unit (the panel and sign above the pins). The replay camera
- * sits up inside the pinsetter, so these are hidden while it plays.
- */
+/** Marks parts of the masking unit (the panel and sign above the pins), so tests can find them. */
 export function maskingPart<T extends THREE.Object3D>(o: T): T {
   o.userData.masking = true;
   return o;
