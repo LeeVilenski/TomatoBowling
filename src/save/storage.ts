@@ -30,6 +30,8 @@ export const storage = {
   },
   playerNames: () => read<string[]>('player-names', ['Player 1', 'Player 2']),
   savePlayerNames: (names: string[]) => write('player-names', names),
+  nickname: () => read<string>('nickname', ''),
+  saveNickname: (name: string) => write('nickname', name),
   setting: (name: string, fallback: boolean) => read<boolean>('setting-' + name, fallback),
   saveSetting: (name: string, value: boolean) => write('setting-' + name, value),
 };

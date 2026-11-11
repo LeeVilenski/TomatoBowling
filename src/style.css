@@ -329,3 +329,17 @@ html, body {
 .card .toggle b { color: #7be06f; margin-left: 4px; }
 .card .toggle[aria-pressed="false"] { opacity: 0.6; }
 .card .toggle[aria-pressed="false"] b { color: #ff8a7a; }
+
+/* Leaderboard */
+#leaderboard .card { max-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+#lb-list { overflow-y: auto; flex: 1; min-height: 0; margin-top: 6px; }
+.results.ranked li { gap: 10px; font-size: 16px; padding: 6px 10px; }
+.results.ranked li:nth-child(odd) { background: rgba(255, 255, 255, 0.04); }
+.results.ranked .rank { width: 2.2em; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.results.ranked .who { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results.ranked .pts { font-weight: 800; font-variant-numeric: tabular-nums; }
+.results.ranked li.me { background: rgba(224, 38, 27, 0.35); }
+#submit-form { margin-top: 14px; }
+#submit-form .player-input button { width: auto; padding: 0 16px; font-size: 16px; }
+#lb-msg.error { color: #ff9a8a; opacity: 1; }
+#lb-msg.good { color: #9be890; opacity: 1; font-weight: 700; }

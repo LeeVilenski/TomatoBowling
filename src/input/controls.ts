@@ -150,7 +150,10 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
 
   // ---- Keyboard ----
   const held = new Set<string>();
+  // Typing in a text box (player names) must not trigger game shortcuts
+  const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
   window.addEventListener('keydown', (e) => {
+    if (typing(e)) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const first = !held.has(k);
     held.add(k);
@@ -194,6 +197,7 @@ export function attachControls(canvas: HTMLCanvasElement, trail: HTMLCanvasEleme
     e.preventDefault();
   });
   window.addEventListener('keyup', (e) => {
+    if (typing(e)) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     held.delete(k);
     if ((k === ' ' || k === 'Enter') && game.isCharging()) game.releaseCharge();

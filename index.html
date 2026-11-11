@@ -49,11 +49,12 @@
       <div class="card">
         <div class="logo">🍅</div>
         <h1>Tomato Dave's<br />Ten-pin</h1>
-        <p class="sub">Stage 5 prototype</p>
+        <p class="sub">Stage 6 prototype</p>
         <div class="buttons">
           <button data-go="single" class="primary">Play</button>
           <button data-go="setup">Pass &amp; Play</button>
           <button data-go="practice">Practice</button>
+          <button data-go="leaderboard">🏆 Leaderboard</button>
         </div>
         <p id="menu-best" class="small"></p>
         <div class="toggles">
@@ -100,10 +101,28 @@
       </div>
     </section>
 
+    <section id="leaderboard" class="screen" hidden>
+      <div class="card">
+        <h2>🏆 Leaderboard</h2>
+        <p id="lb-status" class="small"></p>
+        <ol id="lb-list" class="results ranked"></ol>
+        <p id="lb-best" class="small"></p>
+        <div class="buttons"><button data-go="menu" class="ghost">Back</button></div>
+      </div>
+    </section>
+
     <section id="gameover" class="screen" hidden>
       <div class="card">
         <h2 id="go-title">Game over</h2>
         <div id="go-body"></div>
+        <form id="submit-form" hidden>
+          <p class="small">Add your score to the online leaderboard</p>
+          <div class="player-input">
+            <input id="lb-name" maxlength="12" autocomplete="nickname" placeholder="Your name" aria-label="Your name" />
+            <button type="submit" id="lb-submit" class="primary">Submit</button>
+          </div>
+          <p id="lb-msg" class="small" aria-live="polite"></p>
+        </form>
         <div class="buttons">
           <button id="play-again" class="primary">Play again</button>
           <button data-go="menu" class="ghost">Main menu</button>

@@ -8,6 +8,8 @@ A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the f
 
 To use your own music instead, add an MP3 at `public/audio/music.mp3` and it will loop in place of the built-in tune.
 
+**Online leaderboard (stage 6):** after a single-player game you can add your score to an all-time top 50 (🏆 Leaderboard on the menu). The server re-checks every game ball by ball, filters rude names, and limits each IP to 5 submissions an hour. If the leaderboard isn't reachable, the game carries on and says "Leaderboard offline".
+
 There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.
@@ -24,6 +26,7 @@ npm run dev            # http://localhost:5173
 npm run build          # type-check + production build into dist/
 npm test               # unit tests
 npm run check:physics  # simulate test throws without a browser
+npm run check:api      # run the leaderboard API against a stand-in database
 ```
 
 Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view).
@@ -52,4 +55,6 @@ The power meter rises and falls while you hold, so time your release.
 
 ## Deploy to Vercel
 
-Import this repo in Vercel. It detects Vite automatically (`vercel.json` sets the build command and `dist/` output). No environment variables are needed yet.
+1. Import this repo in Vercel. It detects Vite automatically (`vercel.json` sets the build command and `dist/` output), and `api/scores.ts` becomes the leaderboard function.
+2. For the leaderboard: in the Vercel project, open **Storage**, choose **Upstash for Redis** (free plan) from the Marketplace and connect it to the project. Vercel adds the connection settings (`KV_REST_API_URL` / `KV_REST_API_TOKEN`) for you.
+3. Redeploy. Without step 2 the game still works and the leaderboard shows "offline".

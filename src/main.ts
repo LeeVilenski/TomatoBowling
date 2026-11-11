@@ -17,6 +17,7 @@ import { Juice } from './scene/juice';
 import { classifyThrow, pickLine, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
 import { Sound } from './audio/sound';
+import { fetchTopScores, LeaderboardError, submitScore, type LeaderboardEntry } from './net/leaderboard';
 
 type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'sweeping';
 
@@ -261,7 +262,7 @@ async function start() {
   }
 
   // ---- Screens ----
-  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover'];
+  const screens = ['menu', 'setup', 'pass', 'pause', 'gameover', 'leaderboard'];
   function showScreen(id: string | null) {
     openScreen = id;
     sound.setMusicMood(id === null || id === 'pass' ? 'game' : 'menu');
@@ -320,15 +321,90 @@ async function start() {
       body.innerHTML = `<div class="big-score">${score}</div><p class="small">${
         isBest ? (best > 0 ? '🍅 New personal best!' : '🍅 First game in the books!') : `Your best: ${best}`
       }</p>`;
+      offerSubmission(score, [...match.players[0].rolls]);
     } else {
       const leaders = match.leaders();
       const order = match.players.map((p, i) => ({ name: p.name, score: totals[i], i })).sort((a, b) => b.score - a.score);
+      ($('submit-form') as HTMLFormElement).hidden = true;
       $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
         .join('')}</ul>`;
     }
     showScreen('gameover');
+  }
+
+  // ---- Online leaderboard ----
+  let mine: LeaderboardEntry | null = null; // the score this device just submitted, to highlight it
+  const form = $('submit-form') as HTMLFormElement;
+  const nameInput = $('lb-name') as HTMLInputElement;
+  const submitBtn = $('lb-submit') as HTMLButtonElement;
+  const lbMsg = $('lb-msg');
+  let pending: { score: number; rolls: number[] } | null = null;
+
+  function setLbMsg(text: string, kind: '' | 'error' | 'good' = '') {
+    lbMsg.textContent = text;
+    lbMsg.className = 'small ' + kind;
+  }
+
+  function offerSubmission(score: number, rolls: number[]) {
+    pending = { score, rolls };
+    form.hidden = false;
+    nameInput.disabled = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit';
+    nameInput.value = storage.nickname();
+    setLbMsg('');
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!pending) return;
+    const name = nameInput.value.trim();
+    if (!name) {
+      setLbMsg('Please enter a name.', 'error');
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
+    setLbMsg('');
+    try {
+      const res = await submitScore(name, pending.score, pending.rolls);
+      storage.saveNickname(res.entry.name);
+      mine = res.entry;
+      pending = null;
+      nameInput.disabled = true;
+      submitBtn.textContent = 'Sent ✓';
+      setLbMsg(res.rank <= 50 ? `You're #${res.rank} on the leaderboard! 🍅` : `Submitted! You're #${res.rank} — keep bowling to reach the top 50.`, 'good');
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit';
+      setLbMsg(err instanceof LeaderboardError ? err.message : 'Something went wrong. Try again.', 'error');
+    }
+  });
+
+  async function openLeaderboard() {
+    showScreen('leaderboard');
+    const list = $('lb-list');
+    const status = $('lb-status');
+    const best = storage.bestScore();
+    $('lb-best').textContent = best > 0 ? `Your best on this device: ${best}` : '';
+    list.innerHTML = '';
+    status.textContent = 'Loading…';
+    try {
+      const scores = await fetchTopScores();
+      status.textContent = scores.length ? 'Top 50 of all time' : 'No scores yet — be the first!';
+      let highlighted = false;
+      list.innerHTML = scores
+        .map((s, i) => {
+          const me = !highlighted && mine !== null && s.name === mine.name && s.score === mine.score && s.date === mine.date;
+          if (me) highlighted = true;
+          return `<li class="${me ? 'me' : ''}"><span class="rank">${i + 1}</span><span class="who">${escapeHtml(s.name)}</span><span class="pts">${s.score}</span></li>`;
+        })
+        .join('');
+    } catch (err) {
+      status.textContent = err instanceof LeaderboardError ? err.message : 'Leaderboard offline — try again later.';
+    }
   }
 
   // Practice spare setups
@@ -476,6 +552,7 @@ async function start() {
       else if (go === 'practice') startGame('practice');
       else if (go === 'setup') openSetup();
       else if (go === 'menu') showScreen('menu');
+      else if (go === 'leaderboard') void openLeaderboard();
     }),
   );
   $('pause-btn').addEventListener('click', () => controls.pause());
@@ -550,10 +627,10 @@ async function start() {
     const portrait = camera.aspect < 0.8;
     const dx = aimX - DAVE_OFFSET_X;
     davePos.copy(dave.root.position);
-    const showDave =
-      openScreen === 'menu' || openScreen === 'gameover' || (phase === 'result' && resultTime >= REACTION_AT);
+    const menuShot = openScreen === 'menu' || openScreen === 'gameover' || openScreen === 'leaderboard' || openScreen === 'setup';
+    const showDave = menuShot || (phase === 'result' && resultTime >= REACTION_AT);
 
-    if (openScreen === 'menu' || openScreen === 'gameover') {
+    if (openScreen === 'menu' || openScreen === 'gameover' || openScreen === 'leaderboard' || openScreen === 'setup') {
       // Menu card sits low on the screen; frame Dave in the top half above it
       wantPos.set(davePos.x + 0.5, 1.2, davePos.z - (portrait ? 4.6 : 3.4));
       wantLook.set(davePos.x, portrait ? 0.15 : 0.55, davePos.z);

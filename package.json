@@ -9,13 +9,17 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check:physics": "tsx scripts/physics-check.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:api": "tsx scripts/api-check.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
+    "@upstash/redis": "^1.41.0",
+    "obscenity": "^0.4.6",
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "@types/three": "^0.187.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
