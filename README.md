@@ -53,7 +53,7 @@ There are three modes:
   - 🏆 **The Golden Pin:** a gold-and-velvet hall with its own music, and 🎃 the Pumpkin King. *Dry lanes:* the hook comes early and hard. Win, and roll the credits.
 
   Earn up to three ⭐ a match (win; win big; a turkey or no open frames). Each champion's crown opens the next venue and unlocks a reward (Champion's Blazer, Circuit Board ball, Glitter Suit, Sunset Tomato ball, Golden Dave suit). Matches can be resumed where you left off, and the Golden Pin joins the venue picker once you reach it. 📊 **Career stats** (from the ladder screen) track your average, best games, strike and spare rates, splits picked up, stars, crowns and your head-to-head record with every rival. Rivals have plenty to say before and after a match, and **⏩ Skip their turn** rushes through a rival's frame when you just want to bowl.
-- **🆚 vs CPU:** take turns frame by frame against any rival you've met in Career. Each bowls in Dave's body with a head of their own, and has plenty to say about their own balls. Rivals bowl real balls through the same physics as you (they pick a target, work out the throw, then miss by as much as their skill says), so they leave splits and miss spares honestly. Your record against each is kept on the device. This is the first step of the career mode in [CAREER.md](CAREER.md).
+- **🆚 vs CPU:** take turns frame by frame against any rival you've met in Career. Each bowls in Dave's body with a head of their own, and has plenty to say about their own balls. You and the rival are both on the lane: while the pinsetter sweeps, the bowler walks off to wait beside the lane and the other walks up to the approach. The one waiting fidgets (sways, taps a foot, folds their arms, looks about) and reacts to the other's ball: claps a strike, winces at a gutter. Everyone blinks, and leans after the ball as it hooks. Rivals bowl real balls through the same physics as you (they pick a target, work out the throw, then miss by as much as their skill says), so they leave splits and miss spares honestly. Your record against each is kept on the device. This is the first step of the career mode in [CAREER.md](CAREER.md).
 - **Practice:** unlimited throws, plus one-tap setups for common spares (10 pin, 7 pin, 7-10 split, bucket, big four). The yellow aim line shows exactly where the ball will go (it's worked out with the real physics, at the speed of your last throw), and a blue line shows where your last throw actually went.
 
 You throw by swiping on touch screens, or by holding and releasing with a mouse or keyboard. Spin makes the ball hook late in the lane.
@@ -86,7 +86,7 @@ Every push runs all of these on GitHub (`.github/workflows/checks.yml`).
 
 The browser build loads the physics engine's WebAssembly as its own file (`vite.config.ts` swaps `@dimforge/rapier3d-compat` for `src/game/rapierWeb.ts`), so it downloads and compiles while the scene is being built. Node scripts keep using the compat package.
 
-Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view).
+Dev only: open `/debug-dave.html` on the dev server to see Dave in every pose (`?view=side` for a side view, `?anim` for the walk, waiting fidgets, watching reactions and blink, `?only=walk,blink` to pick poses).
 
 ## Controls
 

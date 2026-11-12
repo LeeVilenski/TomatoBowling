@@ -26,8 +26,16 @@ floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 
 const allHeads = Object.keys(HEADS) as HeadId[];
-const states: string[] =
-  head === 'lineup' ? allHeads.map(() => 'idle') : ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
+// ?anim shows the poses between turns: walking, waiting fidgets, watching the other bowler
+const anim = params.has('anim');
+const only = params.get('only')?.split(',');
+const allStates: string[] = anim
+  ? ['walk', 'wait-sway', 'wait-arms', 'wait-tap', 'wait-look', 'wait-hips', 'watch-strike', 'watch-gutter', 'watch-split', 'follow-left', 'blink']
+  : head === 'lineup'
+    ? allHeads.map(() => 'idle')
+    : ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
+// ?only=wait-arms,watch-strike picks some of them
+const states = only ? allStates.filter((st) => only.includes(st)) : allStates;
 const daves = states.map((s, i) => {
   const d = new Dave();
   if (outfit) d.setOutfit(outfit);
@@ -36,7 +44,19 @@ const daves = states.map((s, i) => {
   else if (head) d.setHead(head as HeadId);
   d.setStance((i - (states.length - 1) / 2) * (head === 'lineup' ? 0.6 : 0.9), 0);
   scene.add(d.root);
-  if (s === 'charge') d.charge(0.8);
+  const x = (i - (states.length - 1) / 2) * (head === 'lineup' ? 0.6 : 0.9);
+  if (s === 'walk') d.walkTo(x, -20);
+  else if (s.startsWith('wait-')) {
+    d.wait();
+    (d as unknown as { fidget: string }).fidget = s.slice(5);
+  } else if (s.startsWith('watch-')) {
+    d.wait();
+    d.watch(s.slice(6) as ReactionKind);
+  } else if (s === 'follow-left') {
+    d.swing(() => {});
+    d.setEnglish(-1);
+  } else if (s === 'blink') (d as unknown as { blinkIn: number }).blinkIn = 0.5;
+  else if (s === 'charge') d.charge(0.8);
   else if (s === 'swing-release') d.swing(() => {});
   else if (s === 'follow') d.swing(() => {});
   else if (s === 'wave') d.wave();
@@ -55,7 +75,7 @@ camera.lookAt(view === 'front' ? 0 : view === 'close' ? -1.8 : -1, view === 'clo
 // Advance each Dave to the moment shown
 const v = new THREE.Vector3();
 for (const { d, s } of daves) {
-  const t = s === 'swing-release' ? 0.36 : s === 'follow' ? 1.0 : s === 'charge' ? 1.0 : 0.55;
+  const t = s === 'swing-release' ? 0.36 : s === 'follow' || s === 'follow-left' ? 1.4 : s === 'charge' ? 1.0 : s === 'walk' ? 0.42 : s === 'blink' ? 0.55 : 0.55;
   for (let i = 0; i < t * 60; i++) d.update(1 / 60);
 }
 for (const { d, s, ball } of daves) {

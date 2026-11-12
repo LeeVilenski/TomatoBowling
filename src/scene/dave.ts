@@ -11,6 +11,8 @@ interface Limb {
   fwd: number; // swing forward (+) / back (-)
   out: number; // raise out to the side (which sign is "out" depends on the arm and how raised it is; dave.test.ts checks the hands stay clear of the head)
   bend: number; // elbow/knee bend
+  /** Arms: turning the arm in towards the chest (folding arms, clapping). */
+  roll?: number;
 }
 
 interface Pose {
@@ -27,9 +29,18 @@ interface Pose {
   legL: Limb;
 }
 
-type State = 'idle' | 'charge' | 'swing' | 'follow' | 'react' | 'wave';
+type State = 'idle' | 'charge' | 'swing' | 'follow' | 'react' | 'wave' | 'walk' | 'wait' | 'watch';
 
-const limb = (fwd = 0, out = 0, bend = 0): Limb => ({ fwd, out, bend });
+/** Little things to do while waiting for a turn, cycled through every few seconds. */
+const FIDGETS = ['sway', 'arms', 'tap', 'look', 'hips'] as const;
+type Fidget = (typeof FIDGETS)[number];
+
+const WALK_SPEED = 1.3; // m/s
+/** How far an arm turns in to fold across the chest or clap. */
+const ROLL_IN = 0.9;
+const TURN_RATE = 7; // how quickly he turns to face a new direction
+
+const limb = (fwd = 0, out = 0, bend = 0, roll = 0): Limb => ({ fwd, out, bend, roll });
 const basePose = (): Pose => ({
   drop: 0,
   lean: 0,
@@ -214,6 +225,20 @@ export class Dave {
   private releaseAt = 0;
   private onRelease: (() => void) | null = null;
   private base = new THREE.Vector3();
+  /** Which way he faces (radians about the vertical; 0 is down the lane). */
+  private yaw = 0;
+  private wantYaw = 0;
+  /** Where he's walking to, what to do when he gets there, and which way to face. */
+  private walk: { x: number; z: number; then: 'idle' | 'wait'; face: number; onArrive?: () => void } | null = null;
+  private stride = 0;
+  private fidget: Fidget = 'sway';
+  private fidgetTime = 0;
+  /** What he's watching the other bowler do. */
+  private watching: ReactionKind = 'meh';
+  /** -1..1: leaning after the ball as it rolls ("body English"). */
+  private english = 0;
+  private blinkIn = 2 + Math.random() * 3;
+  private blinkFor = 0;
   private headRed = new THREE.Color('#e0261b');
   private headDark = new THREE.Color('#8a1610');
   private blush = 0;
@@ -454,9 +479,54 @@ export class Dave {
     return { id: this.headId, pivot: this.headPivot, bounds: HEADS[this.headId].bounds };
   }
 
-  /** Where he stands (feet), before any slide or jump. */
+  /** Where he stands (feet), before any slide or jump. Ignored while he's walking somewhere. */
   setStance(x: number, z: number) {
+    if (this.state === 'walk') return;
     this.base.set(x, 0, z);
+  }
+
+  /** Put him somewhere straight away, facing `yaw` (0 = down the lane). */
+  place(x: number, z: number, yaw = 0) {
+    this.walk = null;
+    this.base.set(x, 0, z);
+    this.yaw = this.wantYaw = yaw;
+    if (this.state === 'walk') this.setState('idle');
+  }
+
+  /**
+   * Walk to (x, z), then turn to face `face` and either get ready to bowl ('idle') or
+   * wait for a turn ('wait'). `onArrive` fires when he's there.
+   */
+  walkTo(x: number, z: number, opts: { face?: number; then?: 'idle' | 'wait'; onArrive?: () => void } = {}) {
+    this.walk = { x, z, then: opts.then ?? 'idle', face: opts.face ?? 0, onArrive: opts.onArrive };
+    this.setState('walk');
+  }
+
+  /** Turn on the spot to face `yaw` (0 = down the lane). */
+  faceTo(yaw: number) {
+    this.wantYaw = yaw;
+  }
+
+  get walking() {
+    return this.state === 'walk';
+  }
+
+  /** Stand by while someone else bowls, fidgeting now and then. */
+  wait() {
+    this.setState('wait');
+    this.fidgetTime = 0;
+  }
+
+  /** React, from the side, to the other bowler's ball. */
+  watch(kind: ReactionKind) {
+    if (this.state !== 'wait' && this.state !== 'watch') return;
+    this.watching = kind;
+    this.setState('watch');
+  }
+
+  /** Lean after the rolling ball: -1 (it's heading left) to 1 (right). */
+  setEnglish(v: number) {
+    this.english = Math.max(-1, Math.min(1, v));
   }
 
   idle() {
@@ -499,6 +569,27 @@ export class Dave {
 
   update(dt: number) {
     this.time += dt;
+    this.stepWalk(dt);
+    // Turn smoothly towards wherever he wants to face (the short way round)
+    let d = this.wantYaw - this.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.yaw += d * Math.min(1, dt * TURN_RATE);
+    // Fidgets change every few seconds while waiting; a watched reaction lasts a moment
+    if (this.state === 'wait') {
+      this.fidgetTime += dt;
+      if (this.fidgetTime > 3.5) {
+        this.fidgetTime = 0;
+        const others = FIDGETS.filter((f) => f !== this.fidget);
+        this.fidget = others[Math.floor(Math.random() * others.length)];
+      }
+    } else if (this.state === 'watch' && this.time > 2.6) this.wait();
+    // Blink every few seconds
+    this.blinkIn -= dt;
+    if (this.blinkIn <= 0) {
+      this.blinkFor = 0.13;
+      this.blinkIn = 2 + Math.random() * 4;
+    }
+    this.blinkFor = Math.max(0, this.blinkFor - dt);
     const t = this.time;
     const target = this.targetPose(t);
 
@@ -517,10 +608,36 @@ export class Dave {
 
     // Expression and colour
     const head = this.headGroups.get(this.headId)!;
-    head.faceMat.map = head.faces[this.expression()];
+    const expr = this.expression();
+    // Blinks show on the calmer expressions (not mid-celebration, with eyes already shut)
+    head.faceMat.map = head.faces[this.blinkFor > 0 && expr !== 'ecstatic' ? 'blink' : expr];
     const wantBlush = this.state === 'react' && this.reaction === 'gutter' ? 1 : 0;
     this.blush = smooth(this.blush, wantBlush, dt * 2);
     this.headMat.color.copy(this.headRed).lerp(this.headDark, this.blush);
+  }
+
+  /** Moves him along a walk, and turns him to face where he's going. */
+  private stepWalk(dt: number) {
+    const w = this.walk;
+    if (this.state !== 'walk' || !w) return;
+    const dx = w.x - this.base.x;
+    const dz = w.z - this.base.z;
+    const dist = Math.hypot(dx, dz);
+    const step = WALK_SPEED * dt;
+    if (dist <= step) {
+      this.base.set(w.x, 0, w.z);
+      this.wantYaw = w.face;
+      this.walk = null;
+      if (w.then === 'wait') this.wait();
+      else this.setState('idle');
+      w.onArrive?.();
+      return;
+    }
+    this.base.x += (dx / dist) * step;
+    this.base.z += (dz / dist) * step;
+    this.stride += step;
+    // Facing the way he's walking (he faces -Z when yaw is 0)
+    this.wantYaw = Math.atan2(-dx, -dz);
   }
 
   private expression(): Expression {
@@ -530,6 +647,10 @@ export class Dave {
         return 'focused';
       case 'wave':
         return 'happy';
+      case 'watch':
+        return ({ strike: 'happy', spare: 'happy', good: 'neutral', meh: 'meh', gutter: 'confused', split: 'confused', miss: 'meh' } as const)[
+          this.watching
+        ];
       case 'react':
         return ({ strike: 'ecstatic', spare: 'happy', good: 'happy', meh: 'meh', gutter: 'sad', split: 'confused', miss: 'meh' } as const)[
           this.reaction
@@ -586,15 +707,37 @@ export class Dave {
         break;
       }
       case 'follow': {
+        // Holding the follow-through, then leaning after the ball as it rolls
+        const e = this.english * Math.min(1, t / 0.6);
         p.armR = limb(2.2, 0.05, 0.35);
-        p.armL = limb(0.35, -1.0, 0.3);
+        p.armL = limb(0.35, -1.0 - e * 0.4, 0.3);
         p.lean = 0.45;
         p.drop = 0.22;
         p.slide = 0.35;
+        p.twist = -e * 0.3;
+        p.tilt = e * 0.25;
         p.legL = limb(0.7, 0, -0.85);
         p.legR = limb(-0.65, 0.05, -0.3);
         break;
       }
+      case 'walk': {
+        // Legs stepping in turn, arms swinging against them
+        const phase = (this.stride / 0.62) * Math.PI * 2;
+        const s = Math.sin(phase);
+        p.legL = limb(0.42 * s, 0, -0.5 * Math.max(0, -Math.cos(phase)));
+        p.legR = limb(-0.42 * s, 0, -0.5 * Math.max(0, Math.cos(phase)));
+        p.armL = limb(-0.35 * s, -0.12, 0.25);
+        p.armR = limb(0.35 * s, -0.12, 0.25);
+        p.drop = 0.02 + 0.015 * Math.abs(Math.cos(phase));
+        p.lean = 0.05;
+        break;
+      }
+      case 'wait':
+        this.waitPose(p, t);
+        break;
+      case 'watch':
+        this.watchPose(p, t);
+        break;
       case 'wave': {
         p.armR = limb(0.2, 2.5, 0.6 + 0.45 * Math.sin(t * 9));
         p.armL = limb(0.1, -0.15, 0.2);
@@ -664,6 +807,80 @@ export class Dave {
     }
   }
 
+  /** Standing by for a turn: one of a few fidgets, changing every few seconds. */
+  private waitPose(p: Pose, t: number) {
+    p.armR = limb(0.05, 0.12, 0.15);
+    p.armL = limb(0.05, 0.12, 0.15);
+    p.drop = 0.01 + 0.008 * Math.sin(t * 1.7);
+    switch (this.fidget) {
+      case 'sway':
+        // Shifting weight from foot to foot
+        p.twist = 0.06 * Math.sin(t * 0.9);
+        p.tilt = 0.05 * Math.sin(t * 0.9);
+        p.legL = limb(0.05 + 0.05 * Math.sin(t * 0.9), 0.04, -0.05);
+        p.legR = limb(0.05 - 0.05 * Math.sin(t * 0.9), 0.04, -0.05);
+        break;
+      case 'arms':
+        // Arms folded across the chest
+        p.armR = limb(0.35, -0.1, 1.65, ROLL_IN);
+        p.armL = limb(0.3, -0.1, 1.7, ROLL_IN);
+        p.tilt = 0.08;
+        break;
+      case 'tap':
+        // Hands in pockets (near enough), tapping a foot
+        p.armR = limb(-0.1, 0.18, 0.5);
+        p.armL = limb(-0.1, 0.18, 0.5);
+        p.legR = limb(0.15, 0.05, -0.25 - 0.2 * Math.max(0, Math.sin(t * 7)));
+        break;
+      case 'look':
+        // Looking round the alley
+        p.twist = 0.45 * Math.sin(t * 0.7);
+        p.nod = -0.05;
+        break;
+      case 'hips':
+        // Hands on hips, rocking on his heels
+        p.armR = limb(0.1, 0.65, 1.5);
+        p.armL = limb(0.1, 0.65, 1.5);
+        p.lean = -0.04 + 0.04 * Math.sin(t * 2.2);
+        break;
+    }
+  }
+
+  /** Reacting from the side to the other bowler's ball. */
+  private watchPose(p: Pose, t: number) {
+    switch (this.watching) {
+      case 'strike':
+      case 'spare': {
+        // Applause: hands together in front of the chest
+        const clap = 0.25 * Math.abs(Math.sin(t * 11));
+        p.armR = limb(0.85, -0.15, 1.05, ROLL_IN - clap);
+        p.armL = limb(0.85, -0.15, 1.05, ROLL_IN - clap);
+        p.nod = 0.06 * Math.sin(t * 5);
+        break;
+      }
+      case 'gutter':
+      case 'miss':
+        // Hands on hips, shaking his head
+        p.armR = limb(0.1, 0.65, 1.5);
+        p.armL = limb(0.1, 0.65, 1.5);
+        p.tilt = 0.18 * Math.sin(t * 6);
+        p.nod = 0.1;
+        break;
+      case 'split':
+        // A sharp intake of breath: leaning back, hands up
+        p.armR = limb(0.9, 0.4, 1.6);
+        p.armL = limb(0.9, 0.4, 1.6);
+        p.lean = -0.12;
+        break;
+      default:
+        // A polite nod
+        p.armR = limb(0.05, 0.12, 0.15);
+        p.armL = limb(0.05, 0.12, 0.15);
+        p.nod = 0.12 * Math.max(0, Math.sin(t * 4));
+        break;
+    }
+  }
+
   private blend(target: Pose, k: number) {
     const p = this.pose;
     for (const key of ['drop', 'lean', 'twist', 'nod', 'tilt', 'slide', 'jump'] as const) p[key] = smooth(p[key], target[key], k);
@@ -671,12 +888,15 @@ export class Dave {
       p[key].fwd = smooth(p[key].fwd, target[key].fwd, k);
       p[key].out = smooth(p[key].out, target[key].out, k);
       p[key].bend = smooth(p[key].bend, target[key].bend, k);
+      p[key].roll = smooth(p[key].roll ?? 0, target[key].roll ?? 0, k);
     }
   }
 
   private apply() {
     const p = this.pose;
-    this.root.position.set(this.base.x, this.base.y + p.jump, this.base.z - p.slide);
+    // The slide goes the way he's facing
+    this.root.position.set(this.base.x - Math.sin(this.yaw) * p.slide, this.base.y + p.jump, this.base.z - Math.cos(this.yaw) * p.slide);
+    this.root.rotation.y = this.yaw;
     this.hips.position.y = 0.95 - p.drop;
     this.spine.rotation.set(-p.lean, p.twist, 0);
     this.headPivot.rotation.set(-p.nod, 0, p.tilt);
@@ -684,7 +904,7 @@ export class Dave {
       const sign = side === 'R' ? 1 : -1;
       const a = side === 'R' ? p.armR : p.armL;
       // Arms stay roughly upright relative to the ground even when he leans
-      this.arms[side].shoulder.rotation.set(a.fwd - p.lean * 0.5, 0, a.out * sign);
+      this.arms[side].shoulder.rotation.set(a.fwd - p.lean * 0.5, (a.roll ?? 0) * sign, a.out * sign);
       this.arms[side].elbow.rotation.x = a.bend;
       const l = side === 'R' ? p.legR : p.legL;
       // Lower the hips → bend the knees automatically to keep feet on the floor

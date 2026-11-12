@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Expression = 'neutral' | 'focused' | 'happy' | 'ecstatic' | 'sad' | 'confused' | 'meh';
+export type Expression = 'neutral' | 'focused' | 'happy' | 'ecstatic' | 'sad' | 'confused' | 'meh' | 'blink';
 
 const SIZE = 256;
 const INK = '#2a1206';
@@ -37,6 +37,16 @@ function drawFace(g: CanvasRenderingContext2D, e: Expression, f: FaceStyle) {
 
   // Eyes
   for (const [x, y] of eyes) {
+    if (e === 'blink') {
+      // Shut for a blink: a gentle downward curve
+      g.strokeStyle = INK;
+      g.lineWidth = 6;
+      g.beginPath();
+      g.moveTo(x - 18, y);
+      g.quadraticCurveTo(x, y + 9, x + 18, y);
+      g.stroke();
+      continue;
+    }
     if (e === 'ecstatic') {
       // Happy closed eyes: ^ ^
       g.strokeStyle = INK;
@@ -110,6 +120,7 @@ function drawFace(g: CanvasRenderingContext2D, e: Expression, f: FaceStyle) {
     sad: [8, 2, -8, 2],
     confused: [0, -2, -8, 14],
     meh: [0, -4, 0, -4],
+    blink: [0, 0, 0, 0],
   };
   const [lt, ll, rt, rl] = brows[e];
   brow(eyes[0][0], lt, ll);
@@ -241,7 +252,7 @@ function drawFace(g: CanvasRenderingContext2D, e: Expression, f: FaceStyle) {
 
 /** One texture per expression, drawn once and reused. */
 export function createFaceTextures(style: FaceStyle = DAVE_FACE): Record<Expression, THREE.CanvasTexture> {
-  const all: Expression[] = ['neutral', 'focused', 'happy', 'ecstatic', 'sad', 'confused', 'meh'];
+  const all: Expression[] = ['neutral', 'focused', 'happy', 'ecstatic', 'sad', 'confused', 'meh', 'blink'];
   const out = {} as Record<Expression, THREE.CanvasTexture>;
   for (const e of all) {
     const c = document.createElement('canvas');
