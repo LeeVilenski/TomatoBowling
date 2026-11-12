@@ -524,7 +524,45 @@ body.replaying #hint, body.replaying #spin, body.replaying #practice-panel { vis
   text-align: left;
 }
 .rival .rname { font-weight: 800; font-size: 16px; }
-.rival .rstars { color: #ffd23a; font-size: 13px; letter-spacing: 1px; }
-.rival .rstars .off { color: rgba(255, 255, 255, 0.2); }
+.rstars { color: #ffd23a; font-size: 13px; letter-spacing: 1px; }
+.rstars .off { color: rgba(255, 255, 255, 0.2); }
 .rival .rblurb { grid-column: 1 / -1; font-size: 12px; font-weight: 500; opacity: 0.8; }
 .rival .rrecord { grid-column: 1 / -1; font-size: 11px; opacity: 0.65; }
+
+/* Career: the ladder poster */
+.ladder { list-style: none; margin: 12px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.card .ladder button.rung {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  width: 100%;
+  height: auto;
+  padding: 10px 12px;
+  text-align: left;
+}
+.rung .remoji { grid-row: span 2; font-size: 30px; text-align: center; }
+.rung .rname { font-weight: 800; font-size: 16px; }
+.rung .rmeta { font-size: 12px; opacity: 0.75; }
+.rung .rgot { grid-row: span 2; font-size: 16px; letter-spacing: 1px; }
+.rung .rgot .off { opacity: 0.2; }
+.rung .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #d4a017; color: #2a1206; font-size: 10px; font-weight: 800; vertical-align: middle; }
+.card .ladder button.rung.next { box-shadow: 0 0 0 2px #ffd23a inset; }
+.card .ladder button.rung.locked { opacity: 0.45; cursor: default; }
+.card .ladder button.rung.locked .remoji { filter: grayscale(1); }
+#career-resume { margin-top: 10px; }
+
+/* Career: the versus card before a match */
+.versus .vs-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 4px; }
+.versus .vs-side { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.versus .vs-emoji { font-size: 56px; line-height: 1.1; }
+.versus .vs-mid { font: italic 900 34px / 1 "Trebuchet MS", "Arial Black", sans-serif; color: #ffd23a; }
+.versus .quote { margin: 12px 4px 6px; font-style: italic; font-size: 16px; }
+.versus .quote::before { content: '“'; }
+.versus .quote::after { content: '”'; }
+
+/* Career: stars on the result card */
+.career-stars { font-size: 34px; letter-spacing: 4px; margin: 4px 0; }
+.career-stars .off { opacity: 0.2; }
+.star-reasons { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 13px; }
+.star-reasons li.miss { opacity: 0.45; }

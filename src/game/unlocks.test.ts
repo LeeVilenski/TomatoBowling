@@ -48,3 +48,12 @@ describe('GameTracker', () => {
     expect(t.record('spare')).toEqual({});
   });
 });
+
+describe("the Champion's Blazer", () => {
+  it('unlocks for topping the Tomato Dave\'s ladder, and stays unlocked', () => {
+    const before = NEW_PROGRESS;
+    const after = mergeProgress(before, { homeChampion: true });
+    expect(newlyUnlocked(before, after).map((i) => i.id)).toEqual(['blazer']);
+    expect(unlockedIds(mergeProgress(after, { homeChampion: false })).has('blazer')).toBe(true);
+  });
+});

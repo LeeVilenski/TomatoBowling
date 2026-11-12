@@ -61,9 +61,14 @@
         <p class="sub">Roll a tomato. Make a mess. 🍅</p>
         <div class="buttons">
           <button data-go="single" class="primary">Play</button>
-          <button data-go="setup">Pass &amp; Play</button>
-          <button data-go="rivals">🆚 vs CPU</button>
-          <button data-go="practice">Practice</button>
+          <div class="button-row">
+            <button data-go="career">🪜 Career</button>
+            <button data-go="rivals">🆚 vs CPU</button>
+          </div>
+          <div class="button-row">
+            <button data-go="setup">Pass &amp; Play</button>
+            <button data-go="practice">Practice</button>
+          </div>
           <div class="venue-picker">
             <button id="venue-prev" aria-label="Previous venue">◀</button>
             <button id="venue-name">📍 Tomato Dave's</button>
@@ -79,6 +84,33 @@
           <button class="toggle" data-toggle="music" aria-pressed="true">🎵 Music <b>On</b></button>
           <button class="toggle" data-toggle="sfx" aria-pressed="true">🔊 Sounds <b>On</b></button>
           <button class="toggle" data-toggle="quality" aria-pressed="true">✨ Graphics <b>High</b></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="career" class="screen" hidden>
+      <div class="card">
+        <h2>🪜 Tomato Dave's Ladder</h2>
+        <p class="small">Beat each rival to climb a rung. Carrot Carl waits at the top.</p>
+        <div id="career-resume" hidden><button id="career-resume-btn" class="primary"></button></div>
+        <ol id="ladder" class="ladder"></ol>
+        <p id="career-stars" class="small"></p>
+        <div class="buttons"><button data-go="menu" class="ghost">Back</button></div>
+      </div>
+    </section>
+
+    <section id="matchintro" class="screen" hidden>
+      <div class="card versus">
+        <div class="vs-row">
+          <div class="vs-side"><div class="vs-emoji">🍅</div><b>You</b></div>
+          <div class="vs-mid">VS</div>
+          <div class="vs-side"><div class="vs-emoji" id="mi-emoji"></div><b id="mi-name"></b><span id="mi-stars" class="rstars"></span></div>
+        </div>
+        <p id="mi-quote" class="quote"></p>
+        <p id="mi-format" class="small"></p>
+        <div class="buttons">
+          <button id="mi-go" class="primary">Bowl!</button>
+          <button data-go="career" class="ghost">Back</button>
         </div>
       </div>
     </section>
@@ -182,9 +214,14 @@
           <div id="lb-entries"></div>
           <button type="button" id="lb-view" class="ghost" hidden>🏆 View leaderboard</button>
         </form>
-        <div class="buttons">
+        <div id="go-buttons" class="buttons">
           <button id="play-again" class="primary">Play again</button>
           <button data-go="menu" class="ghost">Main menu</button>
+        </div>
+        <div id="go-career" class="buttons" hidden>
+          <button id="gc-next" class="primary">Next rival</button>
+          <button id="gc-rematch">Rematch</button>
+          <button data-go="career" class="ghost">Back to the ladder</button>
         </div>
       </div>
     </section>

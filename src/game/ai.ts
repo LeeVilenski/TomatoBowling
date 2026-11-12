@@ -162,11 +162,11 @@ export function humanise(
 }
 
 /**
- * How tense the next ball is, 0–1: the 10th frame is tense; so is a close match from the
- * 8th frame on.
+ * How tense the next ball is, 0–1: the last frame is tense; so is a close match over the
+ * last three frames. `frame` is 0-based; `frames` is the match length.
  */
-export function pressureFor(frame: number, myTotal: number, theirTotal: number): number {
-  let p = frame >= 9 ? 0.6 : 0;
-  if (frame >= 7 && Math.abs(myTotal - theirTotal) <= 15) p += 0.4;
+export function pressureFor(frame: number, myTotal: number, theirTotal: number, frames = 10): number {
+  let p = frame >= frames - 1 ? 0.6 : 0;
+  if (frame >= frames - 3 && Math.abs(myTotal - theirTotal) <= 15) p += 0.4;
   return Math.min(1, p);
 }

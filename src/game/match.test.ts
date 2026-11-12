@@ -70,3 +70,22 @@ describe('Match', () => {
     expect(m.leaders()).toEqual([0, 1]);
   });
 });
+
+describe('a shorter match', () => {
+  it('alternates players and ends after the last frame', () => {
+    const m = new Match(['You', 'Pickle Pete'], 5);
+    for (let f = 0; f < 4; f++) {
+      expect(m.recordRoll(10).playerChanged).toBe(true); // you: strike
+      m.recordRoll(3);
+      expect(m.recordRoll(4).playerChanged).toBe(true); // Pete: open frame
+    }
+    expect(m.position.frame).toBe(4);
+    m.recordRoll(10);
+    m.recordRoll(10);
+    const out = m.recordRoll(10); // you: three in the last frame
+    expect(out.playerChanged).toBe(true);
+    m.recordRoll(1);
+    expect(m.recordRoll(1).gameOver).toBe(true);
+    expect(m.totals()).toEqual([150, 7 * 4 + 2]);
+  });
+});

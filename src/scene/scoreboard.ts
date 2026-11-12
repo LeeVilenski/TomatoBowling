@@ -33,7 +33,7 @@ export const ANIMATION_LENGTH: Record<ScoreAnimation, number> = { strike: 2.6, s
 
 type View =
   | { kind: 'idle' }
-  | { kind: 'scores'; players: ScorePlayer[]; current: number }
+  | { kind: 'scores'; players: ScorePlayer[]; current: number; frames: number }
   | { kind: 'practice'; note: string };
 
 const W = 1024;
@@ -74,8 +74,9 @@ export class Scoreboard {
     this.dirty = true;
   }
 
-  showScores(players: ScorePlayer[], current: number) {
-    this.view = { kind: 'scores', players: players.map((p) => ({ name: p.name, rolls: [...p.rolls] })), current };
+  /** `frames`: the match length (10, or fewer in career mode's early matches). */
+  showScores(players: ScorePlayer[], current: number, frames = 10) {
+    this.view = { kind: 'scores', players: players.map((p) => ({ name: p.name, rolls: [...p.rolls] })), current, frames };
     this.dirty = true;
   }
 
@@ -125,7 +126,7 @@ export class Scoreboard {
     if (this.anim) this.drawAnimation(this.anim.kind, this.anim.t, this.anim.label, this.anim.sub);
     else if (this.view.kind === 'idle') this.drawIdle();
     else if (this.view.kind === 'practice') this.drawPractice(this.view.note);
-    else this.drawScores(this.view.players, this.view.current);
+    else this.drawScores(this.view.players, this.view.current, this.view.frames);
     // Scanlines, for that monitor look
     g.fillStyle = 'rgba(0, 0, 0, 0.12)';
     for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
@@ -156,7 +157,7 @@ export class Scoreboard {
     this.text('throw as much as you like', W / 2, 420, 38, th.dim, 'center', 700);
   }
 
-  private drawScores(players: ScorePlayer[], current: number) {
+  private drawScores(players: ScorePlayer[], current: number, count: number) {
     const g = this.g;
     const th = this.theme;
     const solo = players.length === 1;
@@ -164,14 +165,14 @@ export class Scoreboard {
     const rowH = Math.min(solo ? 300 : 230, (H - top - 20) / players.length);
     const left = solo ? 30 : 150;
     const right = W - (solo ? 30 : 150);
-    const frameW = (right - left) / 10;
+    const frameW = (right - left) / count;
     const markH = rowH * 0.42;
 
     if (solo) {
       // Big total and frame above the card
-      const { total } = scoreFrames(players[0].rolls);
-      const frame = currentFrame(players[0].rolls);
-      this.text(frame > 10 ? 'FINAL' : `FRAME ${frame}`, left, top + 60, 64, th.accent2, 'left');
+      const { total } = scoreFrames(players[0].rolls, count);
+      const frame = currentFrame(players[0].rolls, count);
+      this.text(frame > count ? 'FINAL' : `FRAME ${frame}`, left, top + 60, 64, th.accent2, 'left');
       this.text(String(total), right, top + 60, 110, th.accent, 'right');
     }
 
@@ -179,8 +180,8 @@ export class Scoreboard {
       const y = solo ? top + 150 : top + i * rowH;
       const h = solo ? rowH : rowH - 10;
       const active = i === current;
-      const { frames, total } = scoreFrames(p.rolls);
-      const now = currentFrame(p.rolls) - 1;
+      const { frames, total } = scoreFrames(p.rolls, count);
+      const now = currentFrame(p.rolls, count) - 1;
       if (!solo) {
         // Name on the left, total on the right
         g.fillStyle = active ? th.accent : th.panel;
@@ -190,7 +191,7 @@ export class Scoreboard {
         g.fillRect(right + 10, y, W - right - 20, h);
         this.text(String(total), (right + W) / 2, y + h / 2, Math.min(70, h * 0.55), active ? th.accent : th.ink);
       }
-      for (let f = 0; f < 10; f++) {
+      for (let f = 0; f < count; f++) {
         const x = left + f * frameW;
         const isNow = active && f === now;
         g.fillStyle = isNow ? th.grid : th.panel;
@@ -314,8 +315,8 @@ export class Scoreboard {
 }
 
 /** 1-based frame the player is on (11 once they've finished). */
-function currentFrame(rolls: number[]) {
-  return position(rolls).frame + 1;
+function currentFrame(rolls: number[], count = 10) {
+  return position(rolls, count).frame + 1;
 }
 
 function tomato(g: CanvasRenderingContext2D, x: number, y: number, r: number, spin: number, sad = false) {

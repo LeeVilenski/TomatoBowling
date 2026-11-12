@@ -10,12 +10,14 @@ type Game = {
   phase: string;
   screen: string | null;
   replay: { end: number } | null;
-  match: { players: { rolls: number[] }[]; recordRoll(pins: number): unknown } | null;
+  match: { players: { rolls: number[] }[]; recordRoll(pins: number): unknown; frames: number } | null;
   physics: { ball: { translation(): { z: number } } };
   scene: { traverse(fn: (o: { visible: boolean; userData: Record<string, unknown> }) => void): void };
   controls: { pause(): void; advance(): void; replay(): void; fastForward(): void; canAim(): boolean };
   startGame(mode: string): void;
   startCpu(id: string): void;
+  startCareerMatch(rung: number, log?: number[]): void;
+  career: { results: Record<string, { wins: number } | undefined>; inProgress?: unknown };
   throwBall(x?: number, aim?: number, power?: number, spin?: number): void;
 };
 declare const window: { __game: Game };
@@ -123,6 +125,18 @@ async function main() {
     await page.waitForFunction(() => window.__game.match!.players[1].rolls.length > 0, null, { timeout: 120_000 });
     const rivalRolls = await page.evaluate(() => window.__game.match!.players[1].rolls);
     check(rivalRolls.length > 0, `the rival bowls a real ball (${rivalRolls.join()})`);
+
+    // Career: finish a match against Pickle Pete (one ball left: his, bowled for real)
+    await page.evaluate(() => window.__game.startCareerMatch(0, [10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 10, 10, 3]));
+    check((await page.evaluate(() => window.__game.match!.frames)) === 5, 'early career rivals play 5-frame matches');
+    await page.waitForFunction(() => window.__game.screen === 'gameover', null, { timeout: 180_000 });
+    check(await page.isVisible('#go-career'), 'the career result card appears');
+    check((await page.textContent('.career-stars'))?.includes('⭐') ?? false, 'it awards stars');
+    const save = await page.evaluate(() => window.__game.career);
+    check(save.results.pickle?.wins === 1 && !save.inProgress, 'the win is saved and the match is no longer in progress');
+    await page.click('#go-career [data-go="career"]');
+    const open = await page.$$eval('#ladder .rung:not(.locked)', (els) => els.length);
+    check(open === 2, `beating Pickle Pete unlocks Donut Dana (${open} rungs open)`);
 
     check(errors.length === 0, `no errors in the console${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {

@@ -22,6 +22,8 @@ import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
 import { chooseTarget, humanise, planThrow, pressureFor } from './game/ai';
 import { RIVALS, rivalById, type Rival } from './game/rivals';
+import { HOME_LADDER, isChampion, isUnlocked, loadCareer, nextRung, recordResult, starsFor, totalStars, type Rung } from './game/career';
+import { FRAMES } from './game/scoring';
 import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
 import { Scoreboard, type ScoreAnimation } from './scene/scoreboard';
@@ -252,6 +254,11 @@ async function start() {
   let mode: Mode = 'single';
   // vs CPU: the rival is always player 2
   let rival: Rival | null = null;
+  // Career mode: the rung being played (null outside career), the save, and every ball
+  // bowled in this match in order (saved so a match can be picked up later)
+  let careerRung: Rung | null = null;
+  let career = loadCareer(storage.career());
+  let matchLog: number[] = [];
   let cpuTimer = 0;
   let cpuThrow: ThrowParams | null = null;
   const cpuTurn = () => mode === 'cpu' && rival !== null && match !== null && match.current === 1 && !match.gameOver;
@@ -358,8 +365,9 @@ async function start() {
     if (!rivalBall) gainProgress(progressMade);
     celebrate(reaction, tracker.streak, !rivalBall);
     outcome = match.recordRoll(knocked);
+    matchLog.push(knocked);
     renderScorecard(scorecardEl, match);
-    scoreboard.showScores(match.players, match.players.indexOf(match.player));
+    scoreboard.showScores(match.players, match.players.indexOf(match.player), match.frames);
     const said = resultMessage(outcome.mark, knocked, firstBall);
     setStatus(rivalBall && rival ? `${rival.name}: ${said}` : said);
     nextSetter = outcome.freshRack ? 'rerack' : 'clear';
@@ -431,8 +439,12 @@ async function start() {
   function setTurnStatus() {
     if (!match) return;
     const pos = match.position;
+    // Career: save at each frame boundary (a fresh rack), so the match can be resumed
+    if (careerRung && pos.ball === 0 && !match.gameOver) {
+      career = { ...career, inProgress: { rival: careerRung.rival, frames: match.frames, log: [...matchLog] } };
+      storage.saveCareer(career);
+    }
     if (mode === 'cpu' && rival) {
-      // The rival bowls in its own colours; you in yours
       // The rival bowls in Dave's body, wearing its own head and suit
       dave.setOutfit(cpuTurn() ? rival.outfit : equipped.suit);
       dave.setHead(cpuTurn() ? rival.head : 'tomato');
@@ -441,18 +453,19 @@ async function start() {
         cpuThrow = null;
         setStatus(`${rival.name} is up…`);
         renderScorecard(scorecardEl, match);
-        scoreboard.showScores(match.players, 1);
+        scoreboard.showScores(match.players, 1, match.frames);
         return;
       }
     }
     const who = mode === 'pass' ? `${match.player.name}, ` : '';
     const say = (text: string) => setStatus(who ? who + text : text.charAt(0).toUpperCase() + text.slice(1));
-    if (pos.frame === 9 && pos.ball === 2) say('bonus ball!');
-    else if (pos.ball === 0) say(pos.frame === 9 ? 'final frame!' : 'line up and throw!');
+    const last = match.frames - 1;
+    if (pos.frame === last && pos.ball === 2) say('bonus ball!');
+    else if (pos.ball === 0) say(pos.frame === last ? 'final frame!' : 'line up and throw!');
     else say(pos.standing === 10 ? 'bonus ball!' : 'pick up the spare!');
     updateSpinLabel();
     renderScorecard(scorecardEl, match);
-    scoreboard.showScores(match.players, match.players.indexOf(match.player));
+    scoreboard.showScores(match.players, match.players.indexOf(match.player), match.frames);
   }
 
   // ---- Replay ----
@@ -530,14 +543,26 @@ async function start() {
     }
   }
 
-  /** Clears the lane and starts a new game in the chosen mode. */
-  function startGame(newMode: Mode, names: string[] = ['You']) {
+  /**
+   * Clears the lane and starts a new game in the chosen mode. `frames` is the match length;
+   * `rung` makes it a career match. `log` replays balls already bowled (resuming a match).
+   */
+  function startGame(newMode: Mode, names: string[] = ['You'], frames = FRAMES, rung: Rung | null = null, log: number[] = []) {
     endReplay();
     mode = newMode;
+    careerRung = rung;
     cpuThrow = null;
     dave.setOutfit(equipped.suit);
     dave.setHead('tomato');
-    match = newMode === 'practice' ? null : new Match(names);
+    match = newMode === 'practice' ? null : new Match(names, frames);
+    matchLog = [];
+    if (match) {
+      for (const pins of log) {
+        if (match.gameOver) break;
+        match.recordRoll(pins);
+        matchLog.push(pins);
+      }
+    }
     trackers = names.map(() => new GameTracker());
     gameUnlocks = [];
     outcome = null;
@@ -599,19 +624,141 @@ async function start() {
     startGame('cpu', ['You', r.name]);
   }
 
+  // ---- Career: the ladder, the match intro and the result card ----
+  const stars = (n: number) => `${'⭐'.repeat(n)}<span class="off">${'⭐'.repeat(3 - n)}</span>`;
+
+  function openCareer() {
+    const ladder = $('ladder');
+    ladder.innerHTML = '';
+    const next = nextRung(career);
+    // Top rung (the champion) first, like a poster
+    for (let i = HOME_LADDER.length - 1; i >= 0; i--) {
+      const rung = HOME_LADDER[i];
+      const r = rivalById(rung.rival)!;
+      const rec = career.results[rung.rival];
+      const open = isUnlocked(career, i);
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.className = `rung${open ? '' : ' locked'}${i === next ? ' next' : ''}`;
+      b.disabled = !open;
+      const record = rec ? ` · won ${rec.wins}, lost ${rec.losses}` : '';
+      b.innerHTML = `<span class="remoji">${open ? r.emoji : '🔒'}</span><span class="rname">${escapeHtml(r.name)}${
+        rung.champion ? '<span class="tag">CHAMPION</span>' : ''
+      }</span><span class="rgot" aria-label="${rec?.stars ?? 0} of 3 stars">${stars(rec?.stars ?? 0)}</span><span class="rmeta">${
+        open ? `${rung.frames}-frame match${record}` : `Beat ${escapeHtml(rivalById(HOME_LADDER[i - 1].rival)!.name)} to unlock`
+      }</span>`;
+      if (open) b.addEventListener('click', () => openIntro(i));
+      li.append(b);
+      ladder.append(li);
+    }
+    const total = totalStars(career);
+    $('career-stars').textContent = isChampion(career)
+      ? `🏆 Tomato Dave's champion! ${total} of ${HOME_LADDER.length * 3} stars.`
+      : total > 0
+        ? `${total} of ${HOME_LADDER.length * 3} stars collected.`
+        : '';
+    // A match left part-way through can be picked up again
+    const saved = career.inProgress;
+    const resume = $('career-resume');
+    resume.hidden = !saved;
+    if (saved) {
+      const r = rivalById(saved.rival)!;
+      const frame = new Match(['You', r.name], saved.frames);
+      for (const pins of saved.log) frame.recordRoll(pins);
+      $('career-resume-btn').textContent = `▶ Resume vs ${r.emoji} ${r.name} (frame ${Math.min(frame.position.frame + 1, saved.frames)})`;
+    }
+    showScreen('career');
+  }
+
+  $('career-resume-btn').addEventListener('click', () => {
+    const saved = career.inProgress;
+    const i = HOME_LADDER.findIndex((r) => r.rival === saved?.rival);
+    if (saved && i !== -1) startCareerMatch(i, saved.log);
+  });
+
+  let introRung = 0;
+  function openIntro(i: number) {
+    introRung = i;
+    const rung = HOME_LADDER[i];
+    const r = rivalById(rung.rival)!;
+    $('mi-emoji').textContent = r.emoji;
+    $('mi-name').textContent = r.name;
+    $('mi-stars').innerHTML = `${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span>`;
+    $('mi-quote').textContent = r.intro[Math.floor(Math.random() * r.intro.length)];
+    $('mi-format').textContent = `${rung.frames}-frame match${rung.champion ? ' for the Tomato Dave\'s crown' : ''} · you bowl first`;
+    showScreen('matchintro');
+  }
+  $('mi-go').addEventListener('click', () => startCareerMatch(introRung));
+
+  function startCareerMatch(i: number, log: number[] = []) {
+    const rung = HOME_LADDER[i];
+    const r = rivalById(rung.rival)!;
+    rival = r;
+    startGame('cpu', ['You', r.name], rung.frames, rung, log);
+  }
+
+  /** The result card at the end of a career match. */
+  function careerResult(rung: Rung) {
+    if (!match || !rival) return;
+    const [you, them] = match.totals();
+    const result = starsFor(match.players[0].rolls, match.players[1].rolls, match.frames);
+    dave.react(result.won ? 'strike' : 'meh');
+    const wasChampion = isChampion(career);
+    career = recordResult(career, rung.rival, you, them, result.stars);
+    storage.saveCareer(career);
+    const crowned = rung.champion && result.won && !wasChampion;
+    const fresh = crowned ? gainProgress({ homeChampion: true }, false) : [];
+    const unlocked = [...gameUnlocks, ...fresh];
+
+    $('go-title').textContent = result.won ? (crowned ? '🏆 Champion of Tomato Dave\'s!' : `You beat ${rival.name}!`) : you === them ? "It's a tie!" : `${rival.name} wins`;
+    const reasons = [
+      ['Win the match', result.won],
+      [`Win by ${3 * match.frames}+ pins`, result.bigWin],
+      ['Bowl a turkey, or no open frames', result.flair],
+    ] as const;
+    const next = nextRung(career);
+    const i = HOME_LADDER.indexOf(rung);
+    let note = '';
+    if (result.won && next > i && next !== -1) note = `<p class="small">${rivalById(HOME_LADDER[next].rival)!.emoji} ${escapeHtml(rivalById(HOME_LADDER[next].rival)!.name)} is ready for you.</p>`;
+    if (crowned) note = `<p class="small">You've topped the ladder. New venues are coming soon!</p>`;
+    $('go-body').innerHTML = `<ul class="results"><li class="${result.won ? 'win' : ''}"><span>You</span><span>${you}</span></li><li class="${!result.won && you !== them ? 'win' : ''}"><span>${rival.emoji} ${escapeHtml(rival.name)}</span><span>${them}</span></li></ul>
+      <div class="career-stars" aria-label="${result.stars} of 3 stars">${stars(result.stars)}</div>
+      <ul class="star-reasons">${reasons.map(([what, got]) => `<li class="${got ? '' : 'miss'}">${got ? '⭐' : '☆'} ${what}</li>`).join('')}</ul>${note}${
+        unlocked.length
+          ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((u) => escapeHtml(u.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
+          : ''
+      }`;
+    // Next rival only once this one's beaten and there's someone above
+    const nextBtn = $('gc-next') as HTMLButtonElement;
+    nextBtn.hidden = !(result.won && i + 1 < HOME_LADDER.length);
+    nextBtn.onclick = () => openIntro(i + 1);
+    ($('gc-rematch') as HTMLButtonElement).onclick = () => startCareerMatch(i);
+  }
+
   // ---- Online leaderboard ----
   const leaderboard = new LeaderboardScreen(() => showScreen('leaderboard'));
 
   function showGameOver() {
     if (!match) return;
     const totals = match.totals();
-    // Against the computer, only your own score counts towards unlocks
-    const top = mode === 'cpu' ? totals[0] : Math.max(...totals);
+    // Against the computer, only your own score counts towards unlocks; and only full
+    // 10-frame games count towards score unlocks (a 5-frame score isn't comparable)
+    const top = match.frames < FRAMES ? 0 : mode === 'cpu' ? totals[0] : Math.max(...totals);
+    const inCareer = careerRung !== null;
+    $('go-buttons').hidden = inCareer;
+    $('go-career').hidden = !inCareer;
     dave.setOutfit(equipped.suit);
     dave.setHead('tomato');
     const won = mode === 'cpu' ? totals[0] > totals[1] : true;
     dave.react(!won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
+    if (careerRung) {
+      gameUnlocks.push(...fresh);
+      leaderboard.hide(); // career scores stay out of the main leaderboard
+      careerResult(careerRung);
+      showScreen('gameover');
+      return;
+    }
     const unlocked = [...gameUnlocks, ...fresh];
     const unlockNote = unlocked.length
       ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
@@ -855,6 +1002,7 @@ async function start() {
       if (go === 'single') startGame('single');
       else if (go === 'practice') startGame('practice');
       else if (go === 'rivals') openRivals();
+      else if (go === 'career') openCareer();
       else if (go === 'setup') {
         playerSetup.load();
         showScreen('setup');
@@ -870,8 +1018,10 @@ async function start() {
     storage.setFlag('tutorial-seen');
     showScreen(null);
   });
-  $('restart').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
-  $('play-again').addEventListener('click', () => startGame(mode, match?.players.map((p) => p.name)));
+  // Restarting keeps the same match: players, length, and career rung
+  const restart = () => startGame(mode, match?.players.map((p) => p.name), match?.frames, careerRung);
+  $('restart').addEventListener('click', restart);
+  $('play-again').addEventListener('click', restart);
   $('pass-ready').addEventListener('click', () => showScreen(null));
 
   // ---- Resize ----
@@ -1086,7 +1236,7 @@ async function start() {
       const target = chooseTarget(standing, rival);
       const [you, them] = match.totals();
       const plan = planThrow(rival, target, tracer);
-      cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you), undefined, !target.fullRack);
+      cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you, match.frames), undefined, !target.fullRack);
       aimX = cpuThrow.x;
       physics.holdBall(aimX);
       cpuTimer = CPU_LINE_UP;
@@ -1218,6 +1368,10 @@ async function start() {
     },
     startGame,
     startCpu,
+    startCareerMatch,
+    get career() {
+      return career;
+    },
     showScreen,
     get lastThrow() {
       return lastThrow;

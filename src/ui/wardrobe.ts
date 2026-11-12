@@ -16,6 +16,7 @@ const SWATCHES: Record<string, string> = {
   navy: '#1f2a4d',
   tuxedo: 'linear-gradient(90deg, #121216 40%, #fff 40% 60%, #121216 60%)',
   pinstripe: 'repeating-linear-gradient(90deg, #3a3d48 0 5px, #c9c9d4 5px 6px)',
+  blazer: 'linear-gradient(90deg, #7a1414 38%, #d4a017 38% 42%, #fff 42% 58%, #d4a017 58% 62%, #7a1414 62%)',
   tracksuit:
     'linear-gradient(#f3ecd8 0 32%, #d6281c 32% 38%, transparent 38%), linear-gradient(90deg, #1d6b34 22%, #f3ecd8 22% 28%, #d6281c 28% 32%, #f3ecd8 32% 38%, #1d6b34 38% 62%, #f3ecd8 62% 68%, #d6281c 68% 72%, #f3ecd8 72% 78%, #1d6b34 78%)',
 };

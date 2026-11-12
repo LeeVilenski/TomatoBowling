@@ -6,6 +6,7 @@ export interface Progress {
   mostStrikesInGame: number;
   turkey: boolean; // three strikes in a row
   splitConverted: boolean; // picked up a split for a spare
+  homeChampion: boolean; // won the Tomato Dave's career ladder
 }
 
 export const NEW_PROGRESS: Progress = {
@@ -14,6 +15,7 @@ export const NEW_PROGRESS: Progress = {
   mostStrikesInGame: 0,
   turkey: false,
   splitConverted: false,
+  homeChampion: false,
 };
 
 export type ItemKind = 'ball' | 'suit';
@@ -36,6 +38,7 @@ export const ITEMS: Item[] = [
   { id: 'tuxedo', kind: 'suit', name: 'Tuxedo', how: 'Score 200 or more', unlocked: (p) => p.bestScore >= 200 },
   { id: 'pinstripe', kind: 'suit', name: 'Pinstripe', how: 'Pick up a split', unlocked: (p) => p.splitConverted },
   { id: 'tracksuit', kind: 'suit', name: 'Tracksuit', how: 'Play 10 games', unlocked: (p) => p.gamesPlayed >= 10 },
+  { id: 'blazer', kind: 'suit', name: "Champion's Blazer", how: "Beat Carrot Carl to top the Tomato Dave's ladder", unlocked: (p) => p.homeChampion },
 ];
 
 export function unlockedIds(p: Progress): Set<string> {
@@ -80,5 +83,6 @@ export function mergeProgress(p: Progress, change: Partial<Progress>): Progress 
     mostStrikesInGame: Math.max(p.mostStrikesInGame, change.mostStrikesInGame ?? 0),
     turkey: p.turkey || !!change.turkey,
     splitConverted: p.splitConverted || !!change.splitConverted,
+    homeChampion: p.homeChampion || !!change.homeChampion,
   };
 }
