@@ -1077,6 +1077,9 @@ async function start() {
     if (!cpuThrow) {
       const tracer = ensurePredictor();
       if (!tracer) return; // still loading; try again next frame
+      // Whoever's on the approach now, it's the rival who bowls
+      dave.setHead(rival.head);
+      dave.setOutfit(rival.outfit);
       const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
       const target = chooseTarget(standing, rival);
       const [you, them] = match.totals();
