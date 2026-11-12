@@ -1,5 +1,6 @@
 // Dev-only page (debug-dave.html): shows Dave in each pose so the model can be checked.
 import * as THREE from 'three';
+import { buildBench } from '../scene/bench';
 import { Dave } from '../scene/dave';
 import { HEADS, type HeadId } from '../scene/heads';
 import type { ReactionKind } from '../game/reactions';
@@ -30,7 +31,7 @@ const allHeads = Object.keys(HEADS) as HeadId[];
 const anim = params.has('anim');
 const only = params.get('only')?.split(',');
 const allStates: string[] = anim
-  ? ['walk', 'wait-sway', 'wait-arms', 'wait-tap', 'wait-look', 'wait-hips', 'watch-strike', 'watch-gutter', 'watch-split', 'follow-left', 'blink']
+  ? ['walk', 'wait-sway', 'wait-arms', 'wait-tap', 'wait-look', 'wait-hips', 'watch-strike', 'watch-gutter', 'watch-split', 'follow-left', 'blink', 'sit-sway', 'sit-arms', 'sit-tap', 'sit-hips', 'sit-watch-strike', 'sit-watch-gutter']
   : head === 'lineup'
     ? allHeads.map(() => 'idle')
     : ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
@@ -46,6 +47,15 @@ const daves = states.map((s, i) => {
   scene.add(d.root);
   const x = (i - (states.length - 1) / 2) * (head === 'lineup' ? 0.6 : 0.9);
   if (s === 'walk') d.walkTo(x, -20);
+  else if (s.startsWith('sit-')) {
+    // On a bench, like the one behind the approach
+    d.sitAt(x, 0);
+    const bench = buildBench();
+    bench.position.set(x, 0, 0);
+    scene.add(bench);
+    if (s.startsWith('sit-watch-')) d.watch(s.slice(10) as ReactionKind);
+    else (d as unknown as { fidget: string }).fidget = s.slice(4);
+  }
   else if (s.startsWith('wait-')) {
     d.wait();
     (d as unknown as { fidget: string }).fidget = s.slice(5);

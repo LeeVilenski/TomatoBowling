@@ -16,6 +16,7 @@ import { CameraRig, type Shot } from './scene/cameraRig';
 import { BALL_STYLES, createTomatoBall, PinSet } from './scene/models';
 import { GameTracker, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
 import { Dave } from './scene/dave';
+import { buildBench } from './scene/bench';
 import { buildDecor } from './scene/decor';
 import { ReturnChute } from './scene/chute';
 import { VENUES, VenueManager, type VenueId } from './scene/venues';
@@ -59,11 +60,11 @@ const FAST = 3; // fast forward speed
 // Where Dave stands relative to the ball: the ball sits in his right hand
 const DAVE_OFFSET_X = 0.3;
 const DAVE_Z = 0.62;
-// In a match against a rival, whoever isn't bowling waits here: beside the lane, up by the
-// foul line, far enough from the camera not to block the view
-const WAIT_X = -1.35;
-const WAIT_Z = 0.15;
-const WAIT_YAW = -0.5; // turned towards the lane, to watch
+// In a match against a rival, whoever isn't bowling sits on the bench behind the approach
+// (behind the camera while you aim), and walks up from there for their turn
+const SEAT_X = -0.55;
+const SEAT_Z = 5.3;
+const HANDOVER_SPEED = 1.6; // a brisk walk, m/s
 const BALL_IN_HAND = new THREE.Vector3(0, -0.075, 0);
 
 const clamp = THREE.MathUtils.clamp;
@@ -124,6 +125,10 @@ async function start() {
   const rivalFig = new Dave();
   rivalFig.root.visible = false;
   scene.add(rivalFig.root);
+  // The bowlers' bench behind the approach
+  const bench = buildBench();
+  bench.position.set(SEAT_X, 0, SEAT_Z);
+  scene.add(bench);
   /** Whoever is bowling right now. */
   let bowler: Dave = dave;
   /** The other one, in a match against a rival (null otherwise). */
@@ -136,8 +141,9 @@ async function start() {
     const from = bowler;
     bowler = to;
     handover = true;
-    from.walkTo(WAIT_X, WAIT_Z, { face: WAIT_YAW, then: 'wait' });
-    to.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', onArrive: () => (handover = false) });
+    const speed = rushing ? HANDOVER_SPEED * 3 : HANDOVER_SPEED;
+    from.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed });
+    to.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed, onArrive: () => (handover = false) });
   }
 
   // ---- Unlockables: progress, and the ball and suit Dave is using ----
@@ -306,6 +312,8 @@ async function start() {
   skipBtn.addEventListener('click', () => {
     rushing = true;
     if (phase === 'rolling' || phase === 'settling') setFastForward(true);
+    // Anyone on their way to or from the bench picks up the pace
+    for (const fig of [dave, rivalFig]) fig.hurry(HANDOVER_SPEED * 3);
   });
   const cpuTurn = () => mode === 'cpu' && rival !== null && match !== null && match.current === 1 && !match.gameOver;
   let match: Match | null = null;
@@ -505,8 +513,7 @@ async function start() {
       if (!handover) {
         const want = cpuTurn() ? rivalFig : dave;
         if (want !== bowler) {
-          bowler.place(WAIT_X, WAIT_Z, WAIT_YAW);
-          bowler.wait();
+          bowler.sitAt(SEAT_X, SEAT_Z);
           bowler = want;
           bowler.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
           bowler.idle();
@@ -684,8 +691,7 @@ async function start() {
     if (rivalFig.root.visible && rival) {
       rivalFig.setHead(rival.head);
       rivalFig.setOutfit(rival.outfit);
-      rivalFig.place(WAIT_X, WAIT_Z, WAIT_YAW);
-      rivalFig.wait();
+      rivalFig.sitAt(SEAT_X, SEAT_Z);
     }
     dave.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
     dave.idle();
@@ -840,7 +846,7 @@ async function start() {
     const i = ladder.rungs.indexOf(rung);
     const [you, them] = match.totals();
     const result = starsFor(match.players[0].rolls, match.players[1].rolls, match.frames);
-    dave.react(result.won ? 'strike' : 'meh');
+    if (!dave.walking) dave.react(result.won ? 'strike' : 'meh');
     const wasChampion = isChampion(career, ladder.rungs);
     career = recordResult(career, rung.rival, you, them, result.stars);
     career = addMatchStats(career, match.players[0].rolls, match.frames, result.won, trackers[0]?.splitsConverted ?? 0);
@@ -966,11 +972,21 @@ async function start() {
     dave.setOutfit(equipped.suit);
     dave.setHead('tomato');
     const won = mode === 'cpu' ? totals[0] > totals[1] : true;
-    dave.react(!won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
-    // The camera finds Dave, wherever he is, turned to face it; the rival has its own reaction
+    const reaction: ReactionKind = !won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh';
+    // The camera finds Dave and follows him. If the rival bowled last, Dave gets up off the
+    // bench and comes back to the lane to react, while the rival goes and sits down; the
+    // rival reacts from the bench.
+    const rivalReacts = () => rivalFig.watch(won ? 'gutter' : 'strike');
+    if (rivalFig.root.visible && dave.sitting) {
+      handover = false;
+      rivalFig.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed: HANDOVER_SPEED, onArrive: rivalReacts });
+      dave.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed: HANDOVER_SPEED, onArrive: () => dave.react(reaction) });
+    } else {
+      dave.react(reaction);
+      dave.faceTo(0);
+      if (rivalFig.root.visible) rivalReacts();
+    }
     bowler = dave;
-    dave.faceTo(0);
-    if (rivalFig.root.visible) rivalFig.react(won ? 'meh' : 'strike');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
     if (careerRung) {
       gameUnlocks.push(...fresh);
