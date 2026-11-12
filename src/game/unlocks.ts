@@ -7,6 +7,7 @@ export interface Progress {
   turkey: boolean; // three strikes in a row
   splitConverted: boolean; // picked up a split for a spare
   homeChampion: boolean; // won the Tomato Dave's career ladder
+  crowns: string[]; // career venues you're champion of (ladder ids)
 }
 
 export const NEW_PROGRESS: Progress = {
@@ -16,6 +17,7 @@ export const NEW_PROGRESS: Progress = {
   turkey: false,
   splitConverted: false,
   homeChampion: false,
+  crowns: [],
 };
 
 export type ItemKind = 'ball' | 'suit';
@@ -33,12 +35,16 @@ export const ITEMS: Item[] = [
   { id: 'cherry', kind: 'ball', name: 'Cherry Tomato', how: 'Score 100 or more', unlocked: (p) => p.bestScore >= 100 },
   { id: 'green', kind: 'ball', name: 'Green Tomato', how: 'Bowl 3 strikes in one game', unlocked: (p) => p.mostStrikesInGame >= 3 },
   { id: 'heirloom', kind: 'ball', name: 'Heirloom', how: 'Score 150 or more', unlocked: (p) => p.bestScore >= 150 },
+  { id: 'circuit', kind: 'ball', name: 'Circuit Board', how: 'Become champion of Server Room Lanes', unlocked: (p) => p.crowns.includes('server') },
+  { id: 'sunset', kind: 'ball', name: 'Sunset Tomato', how: 'Become champion of the Rooftop', unlocked: (p) => p.crowns.includes('rooftop') },
   { id: 'golden', kind: 'ball', name: 'Golden Tomato', how: 'Bowl a turkey (3 strikes in a row)', unlocked: (p) => p.turkey },
   { id: 'navy', kind: 'suit', name: 'Navy Suit', how: 'Always yours', unlocked: () => true },
   { id: 'tuxedo', kind: 'suit', name: 'Tuxedo', how: 'Score 200 or more', unlocked: (p) => p.bestScore >= 200 },
   { id: 'pinstripe', kind: 'suit', name: 'Pinstripe', how: 'Pick up a split', unlocked: (p) => p.splitConverted },
   { id: 'tracksuit', kind: 'suit', name: 'Tracksuit', how: 'Play 10 games', unlocked: (p) => p.gamesPlayed >= 10 },
   { id: 'blazer', kind: 'suit', name: "Champion's Blazer", how: "Beat Carrot Carl to top the Tomato Dave's ladder", unlocked: (p) => p.homeChampion },
+  { id: 'glitter', kind: 'suit', name: 'Glitter Suit', how: 'Become champion of Disco Inferno', unlocked: (p) => p.crowns.includes('disco') },
+  { id: 'goldsuit', kind: 'suit', name: 'Golden Dave', how: 'Win the Golden Pin', unlocked: (p) => p.crowns.includes('golden') },
 ];
 
 export function unlockedIds(p: Progress): Set<string> {
@@ -84,5 +90,6 @@ export function mergeProgress(p: Progress, change: Partial<Progress>): Progress 
     turkey: p.turkey || !!change.turkey,
     splitConverted: p.splitConverted || !!change.splitConverted,
     homeChampion: p.homeChampion || !!change.homeChampion,
+    crowns: [...new Set([...(p.crowns ?? []), ...(change.crowns ?? [])])],
   };
 }

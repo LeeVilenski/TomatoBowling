@@ -16,7 +16,9 @@ type Game = {
   controls: { pause(): void; advance(): void; replay(): void; fastForward(): void; canAim(): boolean };
   startGame(mode: string): void;
   startCpu(id: string): void;
-  startCareerMatch(rung: number, log?: number[]): void;
+  startCareerMatch(ladder: number, rung: number, log?: number[]): void;
+  lane: { wind: number; oilEnd: number };
+  showScreen(id: string | null): void;
   career: { results: Record<string, { wins: number } | undefined>; inProgress?: unknown };
   throwBall(x?: number, aim?: number, power?: number, spin?: number): void;
 };
@@ -127,7 +129,7 @@ async function main() {
     check(rivalRolls.length > 0, `the rival bowls a real ball (${rivalRolls.join()})`);
 
     // Career: finish a match against Pickle Pete (one ball left: his, bowled for real)
-    await page.evaluate(() => window.__game.startCareerMatch(0, [10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 10, 10, 3]));
+    await page.evaluate(() => window.__game.startCareerMatch(0, 0, [10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 10, 10, 3]));
     check((await page.evaluate(() => window.__game.match!.frames)) === 5, 'early career rivals play 5-frame matches');
     await page.waitForFunction(() => window.__game.screen === 'gameover', null, { timeout: 180_000 });
     check(await page.isVisible('#go-career'), 'the career result card appears');
@@ -137,6 +139,14 @@ async function main() {
     await page.click('#go-career [data-go="career"]');
     const open = await page.$$eval('#ladder .rung:not(.locked)', (els) => els.length);
     check(open === 2, `beating Pickle Pete unlocks Donut Dana (${open} rungs open)`);
+
+    // Later venues play under their own lane rule: on the Rooftop, a breeze each frame
+    await page.evaluate(() => window.__game.startCareerMatch(3, 0));
+    const lane = await page.evaluate(() => window.__game.lane);
+    check((await page.textContent('#venue-name'))?.includes('Rooftop') ?? false, 'a Rooftop career match is played at the Rooftop');
+    check(lane.wind !== 0 && (await page.isVisible('#wind')), `and the breeze is blowing (${lane.wind}) and shown`);
+    await page.evaluate(() => window.__game.showScreen('menu'));
+    check((await page.evaluate(() => window.__game.lane.wind)) === 0 && !(await page.isVisible('#wind')), 'back at the menu, the lane is back to normal');
 
     check(errors.length === 0, `no errors in the console${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {

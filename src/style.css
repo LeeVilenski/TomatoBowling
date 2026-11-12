@@ -566,3 +566,22 @@ body.replaying #hint, body.replaying #spin, body.replaying #practice-panel { vis
 .career-stars .off { opacity: 0.2; }
 .star-reasons { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 13px; }
 .star-reasons li.miss { opacity: 0.45; }
+
+/* Career: switching between venues on the ladder screen */
+.ladder-head { display: flex; align-items: center; gap: 8px; }
+.ladder-head h2 { flex: 1; margin: 0; font-size: 21px; }
+.card .ladder-head button { width: 40px; height: 40px; flex: none; padding: 0; }
+.card .ladder-head button:disabled { opacity: 0.25; }
+#ladder-rule { margin: 6px 0 0; }
+
+/* The breeze on the Rooftop */
+#wind { margin: 2px 0 0; font-size: 14px; font-weight: 700; color: #bfe4ff; }
+
+/* The end credits */
+.credits-window { height: 46vh; max-height: 360px; overflow: hidden; position: relative; margin: 8px 0 12px;
+  mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); }
+.credits-roll { animation: credits-up 26s linear forwards; padding-top: 46vh; }
+.credits-roll h3 { margin: 18px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffd23a; }
+.credits-roll p { margin: 2px 0; }
+@keyframes credits-up { to { transform: translateY(-100%); } }
+@media (prefers-reduced-motion: reduce) { .credits-roll { animation: none; padding-top: 0; } .credits-window { overflow-y: auto; } }

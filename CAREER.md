@@ -25,10 +25,12 @@ Each venue is a **league** with three rivals and a **champion**. You play each r
 - **Turns:** you and the rival alternate frames, as in Pass & Play. The rival's turns can be fast-forwarded.
 - **Losing:** no penalty. Rematch any rival straight away.
 - **Venue rules** add variety without new systems. Each venue has a twist that changes one existing knob:
-  - *Server Room:* **"Low latency"**, a shorter power meter swing (faster timing).
-  - *Disco:* **"Fresh oil"**, a longer oiled section, so the hook comes later.
-  - *Rooftop:* **"Breezy"**, a gentle sideways drift on the ball that varies by frame and shows on a wind sock.
+  - *Server Room:* **"Long oil"**, a longer oiled section, so the hook comes later and smaller.
+  - *Disco:* **"Bouncy pins"**, springier pins that fly further and come back more.
+  - *Rooftop:* **"Breezy"**, a gentle sideways push on the ball that changes every frame, shown on screen.
   - *Golden Pin:* **"Dry lanes"**, a shorter oil pattern, so the ball hooks early and hard.
+
+  (Built as lane conditions in the physics, so they affect you and the rivals alike. A shorter power meter was dropped for the Server Room because it would only affect mouse players.)
 
   All of these are lane friction, oil length or a small constant force in `physics.ts`, so they're cheap to add.
 
@@ -117,8 +119,8 @@ Each step is playable on its own and can ship by itself:
 1. ✅ *Built:* **AI bowler on the existing lane.** Rival data, the target-and-search AI, and noise from stats. Add one "vs CPU" quick match to the menu, using Dave's model with a different head. *This is the core risk, so it goes first.* Includes the simulation tuning harness.
 2. ✅ *Built (home ladder's four):* **Rival heads.** Pickle, doughnut, sandwich and carrot first (the home ladder), then brie, aubergine, potato and pumpkin: head geometry, face textures and palettes, plus a few reaction lines each.
 3. ✅ *Built:* **Ladder for stage 1.** Ladder screen, match intro and result cards, saving, stars. Three rivals plus Carrot Carl at Tomato Dave's.
-4. **Stages 2–4.** The remaining rivals and venue rules (latency, fresh oil, breeze, dry lanes), each tuned with the harness.
-5. **The Golden Pin.** A new final venue (a gold-and-velvet hall, its own music track), the Pumpkin King, and an ending with credits.
+4. ✅ *Built:* **Stages 2–4.** The remaining rivals and venue rules (long oil, bouncy pins, breeze, dry lanes), each tuned with the harness.
+5. ✅ *Built:* **The Golden Pin.** A new final venue (a gold-and-velvet hall, its own music track), the Pumpkin King, and an ending with credits.
 6. **Polish.** Career stats page, trash-talk lines, a ⏩ skip for the rival's turn, and perhaps a career leaderboard.
 
 A rough size guide: step 1 is the biggest single piece of work. Steps 2–4 are mostly content once 1 and 3 exist.

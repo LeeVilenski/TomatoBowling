@@ -45,6 +45,21 @@ const BALL_RESTITUTION = 0.2;
 // A pin counts as down once it tilts more than ~30° or drops off the deck.
 const DOWN_TILT_COS = Math.cos((30 * Math.PI) / 180);
 
+/**
+ * How a lane plays. Career venues each change one thing: longer oil (the hook comes later
+ * and smaller), dry lanes (it comes early and big), bouncier pins, or a breeze.
+ */
+export interface LaneConditions {
+  /** Where the oil ends (m down the lane, negative). The standard pattern ends at OIL_END_Z. */
+  oilEnd: number;
+  /** How springy the pins are (the standard is PIN_RESTITUTION). */
+  pinBounce: number;
+  /** A steady sideways push on the rolling ball (m/s², + is to the right). */
+  wind: number;
+}
+
+export const STANDARD_LANE: LaneConditions = { oilEnd: OIL_END_Z, pinBounce: PIN_RESTITUTION, wind: 0 };
+
 export interface ThrowParams {
   x: number; // start position across the lane
   angle: number; // radians, positive aims right
@@ -265,9 +280,24 @@ export class BowlingPhysics {
     return !this.pins[i].isEnabled();
   }
 
+  /** The lane's conditions (see LaneConditions). */
+  conditions: LaneConditions = { ...STANDARD_LANE };
+
+  setConditions(c: LaneConditions) {
+    this.conditions = { ...c };
+    for (const pin of this.pins) {
+      for (let i = 0; i < pin.numColliders(); i++) pin.collider(i).setRestitution(c.pinBounce);
+    }
+  }
+
   step() {
     // Oily front of the lane, dry back end: the ball skids, then grips and hooks
-    this.lane.setFriction(this.ball.translation().z > OIL_END_Z ? OIL_FRICTION : DRY_FRICTION);
+    const ballPos = this.ball.translation();
+    this.lane.setFriction(ballPos.z > this.conditions.oilEnd ? OIL_FRICTION : DRY_FRICTION);
+    // A breeze nudges the ball sideways while it's out on the lane
+    if (this.conditions.wind !== 0 && this.ball.bodyType() === RAPIER.RigidBodyType.Dynamic && ballPos.z < -0.3 && ballPos.z > DECK_END_Z && ballPos.y > -0.05) {
+      this.ball.applyImpulse({ x: this.conditions.wind * this.ball.mass() * PHYSICS_DT, y: 0, z: 0 }, true);
+    }
     if (this.stemBumps) this.stemCheck();
     this.world.step();
   }

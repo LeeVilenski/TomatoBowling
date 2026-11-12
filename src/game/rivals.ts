@@ -1,10 +1,23 @@
-// The computer bowlers. For now: the Tomato Dave's ladder (three rivals and the home
-// champion). Accuracy numbers are tuned with `npm run check:rivals`, which plays each rival
-// through simulated games and checks they average near `targetAverage`.
+// The computer bowlers: three rivals and a champion at each career venue, and the Pumpkin
+// King at the Golden Pin. Accuracy numbers are tuned with `npm run check:rivals`, which
+// plays each rival through simulated games (at their own venue, under its lane conditions)
+// and checks they average near `targetAverage`.
 import type { BowlerSkill } from './ai';
 import type { ReactionKind } from './reactions';
 
-export type RivalId = 'pickle' | 'donut' | 'sandy' | 'carl';
+export type RivalId =
+  | 'pickle' | 'donut' | 'sandy' | 'carl' // Tomato Dave's
+  | 'chip' | 'cookie' | 'wafer' | 'brie' // Server Room Lanes
+  | 'jelly' | 'mango' | 'lemon' | 'annie' // Disco Inferno
+  | 'sunny' | 'lolly' | 'kiwi' | 'russet' // Rooftop at Sunset
+  | 'pumpkin'; // The Golden Pin
+
+export type RivalHead =
+  | 'pickle' | 'donut' | 'sandwich' | 'carrot'
+  | 'crisp' | 'cookie' | 'wafer' | 'brie'
+  | 'jelly' | 'mango' | 'lemon' | 'aubergine'
+  | 'egg' | 'lolly' | 'kiwi' | 'potato'
+  | 'pumpkin';
 
 export interface Rival extends BowlerSkill {
   id: RivalId;
@@ -17,7 +30,7 @@ export interface Rival extends BowlerSkill {
   targetAverage: number;
   /** Suit they wear; they bowl in Dave's body with their own head. */
   outfit: string;
-  head: 'pickle' | 'donut' | 'sandwich' | 'carrot';
+  head: RivalHead;
   /** Shown next to their name in the rival picker. */
   emoji: string;
   /** What they say after their own balls (a few per kind of result). */
@@ -119,6 +132,316 @@ export const RIVALS: Rival[] = [
     style: { speed: 8, spin: -0.5, startX: 0.26 },
     accuracy: { angle: 0.0105, x: 0.045, speed: 0.5, spin: 0.08 },
     nerves: 0.3,
+  },
+  // ---------------------------------------------------------------- Server Room Lanes
+  {
+    id: 'chip',
+    name: 'Micro Chip',
+    emoji: '💾',
+    blurb: 'A crisp in a hurry. Thin, salty and very, very fast.',
+    stars: 3,
+    targetAverage: 125,
+    outfit: 'rival-chip',
+    head: 'crisp',
+    style: { speed: 10, spin: 0, startX: 0.06 },
+    accuracy: { angle: 0.0095, x: 0.04, speed: 0.6, spin: 0.06 },
+    nerves: 0.6,
+    intro: ['Processing... processing... you lose.', "I run at 10 gigahertz. You run at... tomato."],
+    lines: {
+      strike: ['Overclocked!', 'Ready salted!', 'Zero latency.'],
+      spare: ['Patched.', 'Crunched it.'],
+      good: ['Nearly peak performance.', 'Most of the packets arrived.'],
+      meh: ['Lag spike.', 'Bit of a soggy one.'],
+      gutter: ['Kernel panic!', 'I feel stale.'],
+      split: ['Fragmented.', 'Needs defragging.'],
+      miss: ['Timeout.', 'Crumbs.'],
+    },
+  },
+  {
+    id: 'cookie',
+    name: 'Cookie Kate',
+    emoji: '🍪',
+    blurb: 'Tracks every throw. Accepts all challenges. Very sweet, very smug.',
+    stars: 3,
+    targetAverage: 135,
+    outfit: 'rival-cookie',
+    head: 'cookie',
+    style: { speed: 7.5, spin: -0.4, startX: 0.2 },
+    accuracy: { angle: 0.0105, x: 0.042, speed: 0.45, spin: 0.06 },
+    nerves: 0.5,
+    spareError: 0.8,
+    intro: ['By playing, you accept all cookies.', "I've been tracking your game, Dave. I know your every move."],
+    lines: {
+      strike: ['Chocolate chip shot!', 'Accepted!', "That's the way the cookie crumbles!"],
+      spare: ['Stored for later.', 'Session saved.'],
+      good: ['Nearly baked.', 'Almost a full batch.'],
+      meh: ['Half-baked.', 'Just a few crumbs.'],
+      gutter: ['Cleared my cache.', 'Burnt.'],
+      split: ['Ooh, two chips left.', 'Tricky.'],
+      miss: ['Declined.', 'Crumbled.'],
+    },
+  },
+  {
+    id: 'wafer',
+    name: 'Wafer Walt',
+    emoji: '🧇',
+    blurb: 'Thin as silicon, layered like a server rack. Hooks the other way.',
+    stars: 3,
+    targetAverage: 145,
+    outfit: 'rival-wafer',
+    head: 'wafer',
+    style: { speed: 8, spin: 0.45, startX: -0.22 },
+    accuracy: { angle: 0.0078, x: 0.033, speed: 0.45, spin: 0.06 },
+    nerves: 0.45,
+    intro: ["I'm wafer-thin, Dave, but I've got a lot of layers.", 'Left-handed hook. Right-handed attitude.'],
+    lines: {
+      strike: ['Etched it in silicon!', 'Wafer-perfect!', 'Layer cake!'],
+      spare: ['Stacked.', 'All layers present.'],
+      good: ['Thin margins.', 'Nearly a full stack.'],
+      meh: ['A bit flaky.', 'Thinner than I hoped.'],
+      gutter: ['Snapped.', 'Shattered.'],
+      split: ['A crack in the wafer.', 'Hmm. Gaps.'],
+      miss: ['Too thin.', 'Brittle.'],
+    },
+  },
+  {
+    id: 'brie',
+    name: 'Byte-sized Brie',
+    emoji: '🧀',
+    blurb: 'The Server Room champion. Ripe, refined and running the whole cluster.',
+    stars: 4,
+    targetAverage: 155,
+    outfit: 'rival-brie',
+    head: 'brie',
+    style: { speed: 8.5, spin: -0.5, startX: 0.26 },
+    accuracy: { angle: 0.007, x: 0.03, speed: 0.4, spin: 0.05 },
+    nerves: 0.3,
+    intro: ['Welcome to my server room. Mind the cables. And the oil.', "Long oil, Dave. The hook comes late. If it comes at all."],
+    lines: {
+      strike: ['Fully cached.', 'Aged to perfection.', 'Root access granted.'],
+      spare: ['Cleanly deployed.', 'Ripe for the picking.'],
+      good: ['A mild result.', '99% uptime.'],
+      meh: ['Slight packet loss.', 'A touch runny.'],
+      gutter: ['The server is down.', 'Mouldy.'],
+      split: ['Load-balancing issue.', 'Distributed... unevenly.'],
+      miss: ['404.', 'Not found.'],
+    },
+  },
+
+  // ---------------------------------------------------------------- Disco Inferno
+  {
+    id: 'jelly',
+    name: 'Jelly Jive',
+    emoji: '🍮',
+    blurb: "Can't stop wobbling. Can't stop dancing. Can't always aim.",
+    stars: 3,
+    targetAverage: 150,
+    outfit: 'rival-jelly',
+    head: 'jelly',
+    style: { speed: 7, spin: -0.3, startX: 0.16 },
+    accuracy: { angle: 0.0079, x: 0.034, speed: 0.5, spin: 0.08 },
+    nerves: 0.8,
+    intro: ["Feel that beat, Dave? That's me wobbling.", "The pins bounce here. So do I."],
+    lines: {
+      strike: ['Wobble wobble, strike!', 'Set perfectly!', 'Jiggy with it!'],
+      spare: ['Still wobbling, still winning.', 'Set!'],
+      good: ['Nearly set.', 'Groovy-ish.'],
+      meh: ['Bit runny.', 'Lost the beat.'],
+      gutter: ["I've melted.", "I'm in a puddle."],
+      split: ['Wobbled apart!', 'Uh oh, splitsville.'],
+      miss: ['Too wobbly!', 'Slipped.'],
+    },
+  },
+  {
+    id: 'mango',
+    name: 'Mango Tango',
+    emoji: '🥭',
+    blurb: 'Smooth moves, ripe timing, and a big sweeping hook.',
+    stars: 4,
+    targetAverage: 160,
+    outfit: 'rival-mango',
+    head: 'mango',
+    style: { speed: 8, spin: -0.65, startX: 0.3 },
+    accuracy: { angle: 0.0064, x: 0.028, speed: 0.4, spin: 0.06 },
+    nerves: 0.4,
+    intro: ['It takes two to tango. Shame you brought a tomato.', "Let's dance, Dave."],
+    lines: {
+      strike: ['Ripe and right!', 'Tango!', 'Juicy!'],
+      spare: ['Smooth.', 'One more step.'],
+      good: ['Nearly ripe.', 'Almost in step.'],
+      meh: ['Missed a beat.', 'Bit green.'],
+      gutter: ['Bruised.', 'Squashed my dance card.'],
+      split: ['A gap in the dance floor.', 'Two partners, no dance.'],
+      miss: ['Stepped on my own toes.', 'Overripe.'],
+    },
+  },
+  {
+    id: 'lemon',
+    name: 'Lemon Twist',
+    emoji: '🍋',
+    blurb: 'Sharp, sour and spins it in from the left.',
+    stars: 4,
+    targetAverage: 168,
+    outfit: 'rival-lemon',
+    head: 'lemon',
+    style: { speed: 8.5, spin: 0.55, startX: -0.27 },
+    accuracy: { angle: 0.0059, x: 0.026, speed: 0.4, spin: 0.05 },
+    nerves: 0.35,
+    spareError: 0.7,
+    intro: ["When life gives you lemons, you lose to them.", "Pucker up, Dave."],
+    lines: {
+      strike: ['Zesty!', "Squeezed 'em all!", 'Twist and shout!'],
+      spare: ['A little twist.', 'Sharp.'],
+      good: ['Tangy.', 'Nearly zest-ful.'],
+      meh: ['Sour.', 'Pithy.'],
+      gutter: ['Bitter.', 'Juiced.'],
+      split: ['Sour leave.', 'Twisted.'],
+      miss: ['Pith.', 'Ugh, sour.'],
+    },
+  },
+  {
+    id: 'annie',
+    name: 'Aubergine Annie',
+    emoji: '🍆',
+    blurb: 'The Disco Inferno champion. Glossy, glamorous and never misses a beat.',
+    stars: 4,
+    targetAverage: 178,
+    outfit: 'rival-annie',
+    head: 'aubergine',
+    style: { speed: 8.5, spin: -0.55, startX: 0.28 },
+    accuracy: { angle: 0.0042, x: 0.02, speed: 0.35, spin: 0.05 },
+    nerves: 0.25,
+    intro: ['Darling, this is MY dance floor.', "The pins bounce here, sweetie. Hope you can keep up."],
+    lines: {
+      strike: ['Fabulous!', 'Glossy!', 'And... pose!'],
+      spare: ['Effortless, darling.', 'Naturally.'],
+      good: ['Still glamorous.', 'Close, darling.'],
+      meh: ['The lights were in my eyes.', 'Off-beat.'],
+      gutter: ['Never happened, darling.', 'Ratatouille.'],
+      split: ['How tiresome.', 'A gap in the glitter.'],
+      miss: ['Hmph.', 'My heel caught.'],
+    },
+  },
+
+  // ---------------------------------------------------------------- Rooftop at Sunset
+  {
+    id: 'sunny',
+    name: 'Sunny Side',
+    emoji: '🍳',
+    blurb: 'Always looking up. Bowls early, bowls cheerful, bowls well.',
+    stars: 4,
+    targetAverage: 165,
+    outfit: 'rival-sunny',
+    head: 'egg',
+    style: { speed: 7.5, spin: -0.45, startX: 0.22 },
+    accuracy: { angle: 0.0053, x: 0.024, speed: 0.4, spin: 0.06 },
+    nerves: 0.5,
+    intro: ['Lovely evening for it, eh Dave?', "Mind the breeze up here. It's eggs-hilarating."],
+    lines: {
+      strike: ['Egg-cellent!', 'Sunny side up!', 'Cracked it!'],
+      spare: ['Over easy.', 'Scrambled them!'],
+      good: ['Nearly done.', 'Runny but good.'],
+      meh: ['Bit undercooked.', 'Hard-boiled luck.'],
+      gutter: ['Cracked.', 'Eggs-asperating.'],
+      split: ['Two yolks!', 'Hmm, a double.'],
+      miss: ['Oops, shell.', 'Fried.'],
+    },
+  },
+  {
+    id: 'lolly',
+    name: 'Ice Lolly Lou',
+    emoji: '🍭',
+    blurb: 'Cool as anything, even at sunset. Throws it hard with a quick little hook.',
+    stars: 4,
+    targetAverage: 175,
+    outfit: 'rival-lolly',
+    head: 'lolly',
+    style: { speed: 9, spin: -0.3, startX: 0.16 },
+    accuracy: { angle: 0.0045, x: 0.02, speed: 0.4, spin: 0.05 },
+    nerves: 0.3,
+    intro: ['Stay cool, Dave. Oh wait, you\'re already sweating.', "I don't melt under pressure."],
+    lines: {
+      strike: ['Ice cold!', 'Brain freeze!', 'Chill.'],
+      spare: ['Cool.', 'Frozen in place.'],
+      good: ['Nearly chilled.', 'Refreshing.'],
+      meh: ['Bit melty.', 'Lukewarm.'],
+      gutter: ["I'm melting!", 'Sticky.'],
+      split: ['Frosty leave.', 'Cracked ice.'],
+      miss: ['Drip.', 'Too warm.'],
+    },
+  },
+  {
+    id: 'kiwi',
+    name: 'Kiwi Kai',
+    emoji: '🥝',
+    blurb: 'Fuzzy outside, sharp inside. Reads the breeze like a book.',
+    stars: 5,
+    targetAverage: 182,
+    outfit: 'rival-kiwi',
+    head: 'kiwi',
+    style: { speed: 8, spin: 0.5, startX: -0.25 },
+    accuracy: { angle: 0.0043, x: 0.019, speed: 0.35, spin: 0.05 },
+    nerves: 0.3,
+    spareError: 0.7,
+    intro: ['Sweet as, Dave. Let\'s have a go.', "I don't mind a bit of wind. Do you?"],
+    lines: {
+      strike: ['Sweet as!', 'Choice!', 'Fuzzy logic!'],
+      spare: ['Tidy.', 'Sorted.'],
+      good: ['Nearly ripe.', 'Not bad, eh.'],
+      meh: ['Bit fuzzy.', 'Hmm, tart.'],
+      gutter: ['Sour as.', 'Gone bush.'],
+      split: ['Bit of a gap.', 'Tricky, eh.'],
+      miss: ['Nah.', 'Fluffed it.'],
+    },
+  },
+  {
+    id: 'russet',
+    name: 'Big Russet',
+    emoji: '🥔',
+    blurb: 'The Rooftop champion. Big, lumpy, and steady as a sack of spuds.',
+    stars: 5,
+    targetAverage: 192,
+    outfit: 'rival-russet',
+    head: 'potato',
+    style: { speed: 9, spin: -0.5, startX: 0.27 },
+    accuracy: { angle: 0.0028, x: 0.013, speed: 0.3, spin: 0.04 },
+    nerves: 0.2,
+    intro: ["Up here, it's just you, me and the wind, little tomato.", "I've seen a thousand sunsets from this lane. You're just another one."],
+    lines: {
+      strike: ['Mashed!', 'Spud-tacular!', 'Couch-potato power!'],
+      spare: ['Hash browned.', 'Steady.'],
+      good: ['Wholesome.', 'Nearly a full sack.'],
+      meh: ['Lumpy.', 'Underdone.'],
+      gutter: ['Jacket off.', 'Spud dud.'],
+      split: ['Chipped.', 'Two eyes left.'],
+      miss: ['Peeled off.', 'Small potatoes.'],
+    },
+  },
+
+  // ---------------------------------------------------------------- The Golden Pin
+  {
+    id: 'pumpkin',
+    name: 'The Pumpkin King',
+    emoji: '🎃',
+    blurb: 'Ruler of the Golden Pin. Grand, theatrical, and almost never misses.',
+    stars: 5,
+    targetAverage: 215,
+    outfit: 'rival-pumpkin',
+    head: 'pumpkin',
+    style: { speed: 9, spin: -0.6, startX: 0.3 },
+    accuracy: { angle: 0.0012, x: 0.006, speed: 0.2, spin: 0.02 },
+    nerves: 0.15,
+    spareError: 0.6,
+    intro: ['So. The tomato who would be king. Kneel, and we may begin.', 'Dry lanes, little tomato. The hook comes early. Do try to keep up.'],
+    lines: {
+      strike: ['As is my right!', 'Bow before me!', 'Gourd-geous!'],
+      spare: ['Naturally.', 'A royal clean-up.'],
+      good: ['Even kings have off days. Briefly.', 'Adequate.'],
+      meh: ['The court will forget that.', 'Hmm. Unroyal.'],
+      gutter: ['THAT DID NOT HAPPEN.', 'Off with its head!'],
+      split: ['How tiresome.', 'A royal pain.'],
+      miss: ['Hmph.', 'The crown slipped.'],
+    },
   },
 ];
 
