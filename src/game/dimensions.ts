@@ -85,3 +85,12 @@ export function gutterPlates(): Plate[] {
 
 /** Fixed physics step (seconds). */
 export const PHYSICS_DT = 1 / 120;
+
+// Limits on a throw, the same for the player and the computer bowlers
+/** Furthest the ball can start from the middle of the lane (m). */
+export const MAX_START_X = LANE_HALF - BALL_RADIUS - 0.03;
+/** Widest aim angle either side of straight down the lane (radians). */
+export const MAX_AIM_ANGLE = (4 * Math.PI) / 180;
+/** Slowest throw: a gentle roll (~7 mph). */
+export const MIN_THROW_SPEED = 3;
+export const MAX_THROW_SPEED = 11;

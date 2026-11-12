@@ -37,6 +37,9 @@ export const storage = {
   saveEquipped: (e: { ball: string; suit: string }) => write('equipped', e),
   flag: (name: string) => read<boolean>('flag-' + name, false),
   setFlag: (name: string) => write('flag-' + name, true),
+  /** Your wins, losses and ties against each computer rival. */
+  vsRecord: () => read<Record<string, { w: number; l: number; t: number }>>('vs-record', {}),
+  saveVsRecord: (r: Record<string, { w: number; l: number; t: number }>) => write('vs-record', r),
   count: (name: string) => read<number>('count-' + name, 0),
   saveCount: (name: string, n: number) => write('count-' + name, n),
   text: (name: string, fallback: string) => read<string>('setting-' + name, fallback),

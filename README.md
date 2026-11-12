@@ -45,6 +45,7 @@ There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.
 - **Pass & Play:** 2–4 players take turns on one device. A "pass the device" screen appears between turns.
+- **🆚 vs CPU:** take turns frame by frame against a computer rival: Pickle Pete, Donut Dana, Sandy Wich or the home champion Carrot Carl. Rivals bowl real balls through the same physics as you (they pick a target, work out the throw, then miss by as much as their skill says), so they leave splits and miss spares honestly. Your record against each is kept on the device. This is the first step of the career mode in [CAREER.md](CAREER.md).
 - **Practice:** unlimited throws, plus one-tap setups for common spares (10 pin, 7 pin, 7-10 split, bucket, big four). The yellow aim line shows exactly where the ball will go (it's worked out with the real physics, at the speed of your last throw), and a blue line shows where your last throw actually went.
 
 You throw by swiping on touch screens, or by holding and releasing with a mouse or keyboard. Spin makes the ball hook late in the lane.
@@ -58,6 +59,7 @@ npm run build          # type-check + production build into dist/
 npm test               # unit tests
 npm run check:physics  # simulate test throws without a browser
 npm run check:api      # run the leaderboard API against a stand-in database
+npm run check:rivals   # play each computer rival through simulated games; checks they average near their target
 npm run check:browser  # play a few throws of the production build in headless Chromium (run `npm run build` first)
 ```
 

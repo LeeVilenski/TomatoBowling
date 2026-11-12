@@ -32,6 +32,8 @@ jobs:
         run: npm run check:physics
       - name: Leaderboard API
         run: npm run check:api
+      - name: Computer rivals play to their level
+        run: npm run check:rivals
 
   browser:
     name: Build and play in a browser

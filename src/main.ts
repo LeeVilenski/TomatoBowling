@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './style.css';
-import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, OUTER_HALF } from './game/dimensions';
+import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, MAX_AIM_ANGLE, MAX_START_X, MAX_THROW_SPEED, MIN_THROW_SPEED, OUTER_HALF } from './game/dimensions';
 import { BowlingPhysics, PHYSICS_DT } from './game/physics';
 import { Match, type RollOutcome } from './game/match';
 import { Pinsetter, type PinsetterMode } from './game/pinsetter';
@@ -20,6 +20,9 @@ import { buildDecor } from './scene/decor';
 import { ReturnChute } from './scene/chute';
 import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
+import { chooseTarget, humanise, planThrow, pressureFor } from './game/ai';
+import { RIVALS, rivalById, type Rival } from './game/rivals';
+import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
 import { Scoreboard, type ScoreAnimation } from './scene/scoreboard';
 import { classifyThrow, CommentPacer, pickLine, streakName, type ReactionKind } from './game/reactions';
@@ -32,15 +35,15 @@ import { $, escapeHtml, IN_GAME_SCREENS, MENU_SHOT_SCREENS, SCREENS, type Screen
 
 type Phase = 'aiming' | 'charging' | 'swinging' | 'rolling' | 'settling' | 'result' | 'replay' | 'sweeping';
 
-const MAX_X = LANE_HALF - BALL_RADIUS - 0.03;
-const MAX_ANGLE = (4 * Math.PI) / 180;
+const MAX_X = MAX_START_X;
+const MAX_ANGLE = MAX_AIM_ANGLE;
 const ARROWS_Z = -4.57; // the targeting arrows, 15 ft down the lane
 const BALL_START_Z = -0.3;
 // Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
-const MIN_SPEED = 3; // a gentle roll (~7 mph)
-const MAX_SPEED = 11;
+const MIN_SPEED = MIN_THROW_SPEED;
+const MAX_SPEED = MAX_THROW_SPEED;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
 const REACTION_AT = 1.1; // seconds of looking at the pins before cutting to Dave's reaction
 const RESULT_PAUSE = 3.6; // seconds before the pinsetter runs on its own (when Dave comments)
@@ -48,6 +51,8 @@ const QUIET_PAUSE = 1.6; // ...and when he lets the ball pass without a word
 const AUTO_REPLAY_AT = 0.9; // strikes replay automatically, this long after the result
 const AUTO_REPLAY_AFTER_BANNER = 2.1; // ...or after the turkey banner has had its moment
 const HINT_THROWS = 5; // the controls hint fades once someone has thrown this many balls
+const CPU_THINK = 1.0; // seconds a computer bowler takes to size up the pins
+const CPU_LINE_UP = 0.7; // ...and to line up once it has decided
 const FAST = 3; // fast forward speed
 // Where Dave stands relative to the ball: the ball sits in his right hand
 const DAVE_OFFSET_X = 0.3;
@@ -238,8 +243,13 @@ async function start() {
   replayBtn.addEventListener('click', () => controls.replay());
 
   // ---- Game mode state ----
-  type Mode = 'single' | 'pass' | 'practice';
+  type Mode = 'single' | 'pass' | 'practice' | 'cpu';
   let mode: Mode = 'single';
+  // vs CPU: the rival is always player 2
+  let rival: Rival | null = null;
+  let cpuTimer = 0;
+  let cpuThrow: ThrowParams | null = null;
+  const cpuTurn = () => mode === 'cpu' && rival !== null && match !== null && match.current === 1 && !match.gameOver;
   let match: Match | null = null;
   let outcome: RollOutcome | null = null;
   let practiceBall: 1 | 2 = 1;
@@ -260,8 +270,9 @@ async function start() {
     powerFill.style.transform = `scaleY(${p})`;
   }
 
-  function launch(p: number, aimValue: number, spinValue: number) {
-    const speed = (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * speedBonus;
+  /** `exactSpeed` (m/s) is for computer bowlers, which choose a speed rather than a power. */
+  function launch(p: number, aimValue: number, spinValue: number, exactSpeed?: number) {
+    const speed = exactSpeed ?? (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * speedBonus;
     downBefore = physics.pinsDown();
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
@@ -274,12 +285,12 @@ async function start() {
     settleTime = 0;
     lastReplay = null;
     recorder.start();
-    if (throwsMade < HINT_THROWS) {
+    if (throwsMade < HINT_THROWS && !cpuTurn()) {
       throwsMade++;
       storage.saveCount('throws', throwsMade);
       if (throwsMade >= HINT_THROWS) hint.classList.add('faded');
     }
-    setStatus(`Rolling… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
+    setStatus(`${cpuTurn() && rival ? `${rival.name} rolls` : 'Rolling'}… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
   }
 
   function resultMessage(m: string, knocked: number, firstBall: boolean) {
@@ -301,8 +312,10 @@ async function start() {
     reactionShown = false;
     const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
-    daveComments = pacer.shouldComment(reaction);
-    autoReplay = reaction === 'strike' && lastReplay !== null;
+    // A computer rival's ball: no comment from Dave, no automatic replay (the button's there)
+    const rivalBall = cpuTurn();
+    daveComments = !rivalBall && pacer.shouldComment(reaction);
+    autoReplay = !rivalBall && reaction === 'strike' && lastReplay !== null;
     autoReplayAt = AUTO_REPLAY_AT;
     if (reaction === 'strike') {
       sound.cheer();
@@ -333,20 +346,23 @@ async function start() {
     if (!match) return;
     const firstBall = match.position.ball === 0;
     const tracker = trackers[match.current];
-    gainProgress(tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other'));
-    celebrate(reaction, tracker.streak);
+    const progressMade = tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other');
+    // A rival's strikes and splits don't unlock anything for you
+    if (!rivalBall) gainProgress(progressMade);
+    celebrate(reaction, tracker.streak, !rivalBall);
     outcome = match.recordRoll(knocked);
     renderScorecard(scorecardEl, match);
     scoreboard.showScores(match.players, match.players.indexOf(match.player));
-    setStatus(resultMessage(outcome.mark, knocked, firstBall));
+    const said = resultMessage(outcome.mark, knocked, firstBall);
+    setStatus(rivalBall && rival ? `${rival.name}: ${said}` : said);
     nextSetter = outcome.freshRack ? 'rerack' : 'clear';
   }
 
   /** The turkey banner, and which animation the overhead scoreboard plays for this ball. */
-  function celebrate(kind: ReactionKind, streak: number) {
+  function celebrate(kind: ReactionKind, streak: number, banner = true) {
     const run = kind === 'strike' ? streakName(streak) : null;
     if (run) {
-      showBanner(run);
+      if (banner) showBanner(run);
       autoReplayAt = AUTO_REPLAY_AFTER_BANNER;
       pendingAnim = { kind: 'turkey', label: run, sub: `${streak} strikes in a row!`, glance: true };
     } else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
@@ -408,6 +424,18 @@ async function start() {
   function setTurnStatus() {
     if (!match) return;
     const pos = match.position;
+    if (mode === 'cpu' && rival) {
+      // The rival bowls in its own colours; you in yours
+      dave.setOutfit(cpuTurn() ? rival.outfit : equipped.suit);
+      if (cpuTurn()) {
+        cpuTimer = CPU_THINK;
+        cpuThrow = null;
+        setStatus(`${rival.name} is up…`);
+        renderScorecard(scorecardEl, match);
+        scoreboard.showScores(match.players, 1);
+        return;
+      }
+    }
     const who = mode === 'pass' ? `${match.player.name}, ` : '';
     const say = (text: string) => setStatus(who ? who + text : text.charAt(0).toUpperCase() + text.slice(1));
     if (pos.frame === 9 && pos.ball === 2) say('bonus ball!');
@@ -494,6 +522,8 @@ async function start() {
   function startGame(newMode: Mode, names: string[] = ['You']) {
     endReplay();
     mode = newMode;
+    cpuThrow = null;
+    dave.setOutfit(equipped.suit);
     match = newMode === 'practice' ? null : new Match(names);
     trackers = names.map(() => new GameTracker());
     gameUnlocks = [];
@@ -531,14 +561,42 @@ async function start() {
     }
   }
 
+  // ---- vs CPU: pick a rival ----
+  function openRivals() {
+    const list = $('rival-list');
+    const record = storage.vsRecord();
+    list.innerHTML = '';
+    for (const r of RIVALS) {
+      const b = document.createElement('button');
+      b.className = 'rival';
+      const rec = record[r.id];
+      b.innerHTML = `<span class="rname">${escapeHtml(r.name)}</span><span class="rstars" aria-label="${r.stars} of 5 stars">${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span></span><span class="rblurb">${escapeHtml(r.blurb)}</span>${
+        rec ? `<span class="rrecord">You: won ${rec.w} · lost ${rec.l}${rec.t ? ` · tied ${rec.t}` : ''}</span>` : ''
+      }`;
+      b.addEventListener('click', () => startCpu(r.id));
+      list.append(b);
+    }
+    showScreen('rivals');
+  }
+
+  function startCpu(id: string) {
+    const r = rivalById(id);
+    if (!r) return;
+    rival = r;
+    startGame('cpu', ['You', r.name]);
+  }
+
   // ---- Online leaderboard ----
   const leaderboard = new LeaderboardScreen(() => showScreen('leaderboard'));
 
   function showGameOver() {
     if (!match) return;
     const totals = match.totals();
-    const top = Math.max(...totals);
-    dave.react(top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
+    // Against the computer, only your own score counts towards unlocks
+    const top = mode === 'cpu' ? totals[0] : Math.max(...totals);
+    dave.setOutfit(equipped.suit);
+    const won = mode === 'cpu' ? totals[0] > totals[1] : true;
+    dave.react(!won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
     const unlocked = [...gameUnlocks, ...fresh];
     const unlockNote = unlocked.length
@@ -557,8 +615,19 @@ async function start() {
     } else {
       const leaders = match.leaders();
       const order = match.players.map((p, i) => ({ name: p.name, score: totals[i], i })).sort((a, b) => b.score - a.score);
-      leaderboard.offer(order.map((r) => ({ name: match!.players[r.i].name, score: r.score, rolls: [...match!.players[r.i].rolls] })));
-      $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
+      if (mode === 'cpu' && rival) {
+        // Only your own score goes on the leaderboard, never the computer's
+        leaderboard.offer([{ score: totals[0], rolls: [...match.players[0].rolls] }]);
+        const result = totals[0] > totals[1] ? 'w' : totals[0] < totals[1] ? 'l' : 't';
+        const record = storage.vsRecord();
+        const r = (record[rival.id] ??= { w: 0, l: 0, t: 0 });
+        r[result]++;
+        storage.saveVsRecord(record);
+      } else {
+        leaderboard.offer(order.map((r) => ({ name: match!.players[r.i].name, score: r.score, rolls: [...match!.players[r.i].rolls] })));
+      }
+      $('go-title').textContent =
+        leaders.length > 1 ? "It's a tie!" : mode === 'cpu' && leaders[0] === 0 ? 'You win! 🍅' : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
         .join('')}</ul>${unlockNote}`;
@@ -639,28 +708,33 @@ async function start() {
   }
 
   const controls: ControlTarget = {
-    canAim: () => openScreen === null && (phase === 'aiming' || phase === 'charging'),
+    canAim: () => openScreen === null && (phase === 'aiming' || phase === 'charging') && !cpuTurn(),
     isCharging: () => phase === 'charging',
     moveBy(delta) {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming') return;
       aimX = clamp(aimX + delta * MAX_X, -MAX_X, MAX_X);
       physics.holdBall(aimX);
     },
     setPosition(v) {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming') return;
       aimX = clamp(v, -1, 1) * MAX_X;
       physics.holdBall(aimX);
     },
     nudgeAim(delta) {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming' && phase !== 'charging') return;
       aim = clamp(aim + delta, -1, 1);
     },
     nudgeSpin(delta) {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming' && phase !== 'charging') return;
       spin = clamp(Math.round((spin + delta) * 10) / 10, -1, 1);
       updateSpinLabel();
     },
     startCharge() {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming') return;
       phase = 'charging';
       chargeStart = performance.now();
@@ -684,6 +758,7 @@ async function start() {
       setStatus('Line up and throw!');
     },
     swipeThrow(t: SwipeThrow) {
+      if (cpuTurn()) return; // the rival's turn
       if (phase !== 'aiming') return;
       showPower(t.power, true);
       setTimeout(() => showPower(t.power, false), 700);
@@ -692,7 +767,7 @@ async function start() {
       dave.swing(() => launch(t.power, aim, t.spin));
     },
     swipePreview(direction) {
-      if (openScreen === null && phase === 'aiming') aim = swipeDirectionToAim(direction);
+      if (openScreen === null && phase === 'aiming' && !cpuTurn()) aim = swipeDirectionToAim(direction);
     },
     advance() {
       if (openScreen === 'pass') showScreen(null);
@@ -765,6 +840,7 @@ async function start() {
       const go = b.dataset.go!;
       if (go === 'single') startGame('single');
       else if (go === 'practice') startGame('practice');
+      else if (go === 'rivals') openRivals();
       else if (go === 'setup') {
         playerSetup.load();
         showScreen('setup');
@@ -826,7 +902,8 @@ async function start() {
     return lastThrow.speed > 0 ? lastThrow.speed : (MIN_SPEED + DEFAULT_PRACTICE_POWER * (MAX_SPEED - MIN_SPEED)) * speedBonus;
   }
 
-  function updatePrediction(now: number) {
+  /** The pin-less practice world, shared with the computer bowlers. Loads on first use. */
+  function ensurePredictor(): BowlingPhysics | null {
     if (!predictor) {
       if (!predictorLoading) {
         predictorLoading = true;
@@ -835,9 +912,14 @@ async function start() {
           predictor = p;
         });
       }
-      return false;
+      return null;
     }
     if (predictor.ballRadius !== physics.ballRadius) predictor.setBallRadius(physics.ballRadius);
+    return predictor;
+  }
+
+  function updatePrediction(now: number) {
+    if (!ensurePredictor() || !predictor) return false;
     const speed = practiceSpeed();
     const key = [aimX, aim, spin, speed, physics.ballRadius].map((v) => v.toFixed(3)).join('|');
     // At most ten times a second, and only when something changed
@@ -865,7 +947,7 @@ async function start() {
   }
 
   function updateAimLine() {
-    aimLine.visible = phase === 'aiming' || phase === 'charging';
+    aimLine.visible = (phase === 'aiming' || phase === 'charging') && !cpuTurn();
     updateGhost();
     if (!aimLine.visible) return;
     if (mode === 'practice' && updatePrediction(performance.now())) {
@@ -975,8 +1057,34 @@ async function start() {
     }
   }
 
+  /** The computer rival's turn: size up the pins, step into place, then bowl. */
+  function updateCpu(dt: number) {
+    if (!rival || !match) return;
+    cpuTimer -= dt;
+    if (cpuTimer > 0) return;
+    if (!cpuThrow) {
+      const tracer = ensurePredictor();
+      if (!tracer) return; // still loading; try again next frame
+      const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
+      const target = chooseTarget(standing, rival);
+      const [you, them] = match.totals();
+      const plan = planThrow(rival, target, tracer);
+      cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you), undefined, !target.fullRack);
+      aimX = cpuThrow.x;
+      physics.holdBall(aimX);
+      cpuTimer = CPU_LINE_UP;
+      return;
+    }
+    const t = cpuThrow;
+    cpuThrow = null;
+    phase = 'swinging';
+    dave.swing(() => launch(0, t.angle / MAX_ANGLE, t.spin ?? 0, t.speed));
+  }
+
   function updatePhase(dt: number) {
-    if (phase === 'charging') {
+    if (phase === 'aiming' && cpuTurn()) {
+      updateCpu(dt);
+    } else if (phase === 'charging') {
       // Uses the real clock so the meter moves at the same pace on slow devices
       const held = (performance.now() - chargeStart) / 1000;
       power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
@@ -1092,6 +1200,7 @@ async function start() {
       return openScreen;
     },
     startGame,
+    startCpu,
     showScreen,
     get lastThrow() {
       return lastThrow;

@@ -62,6 +62,7 @@
         <div class="buttons">
           <button data-go="single" class="primary">Play</button>
           <button data-go="setup">Pass &amp; Play</button>
+          <button data-go="rivals">🆚 vs CPU</button>
           <button data-go="practice">Practice</button>
           <div class="venue-picker">
             <button id="venue-prev" aria-label="Previous venue">◀</button>
@@ -79,6 +80,15 @@
           <button class="toggle" data-toggle="sfx" aria-pressed="true">🔊 Sounds <b>On</b></button>
           <button class="toggle" data-toggle="quality" aria-pressed="true">✨ Graphics <b>High</b></button>
         </div>
+      </div>
+    </section>
+
+    <section id="rivals" class="screen" hidden>
+      <div class="card">
+        <h2>🆚 Pick a rival</h2>
+        <p class="small">Take turns frame by frame against a computer bowler.</p>
+        <div id="rival-list" class="rival-list"></div>
+        <div class="buttons"><button data-go="menu" class="ghost">Back</button></div>
       </div>
     </section>
 

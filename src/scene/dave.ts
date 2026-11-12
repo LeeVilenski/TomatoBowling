@@ -80,6 +80,11 @@ export const OUTFITS: Record<string, Outfit> = {
   tuxedo: { suit: '#121216', bowTie: true, shirt: true, shoes: '#0a0a0a' },
   pinstripe: { suit: '#3a3d48', pattern: 'pinstripe', tie: '#e0b02e', shirt: true, shoes: '#5a2e14' },
   tracksuit: { suit: TRACK.green, pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
+  // Computer rivals' colours (they bowl in Dave's body until they get heads of their own)
+  'rival-pickle': { suit: '#5c7a2a', tie: '#e8d44d', shirt: true, shoes: '#3a2a12' },
+  'rival-donut': { suit: '#e06fa3', tie: '#7a3b1e', shirt: true, shoes: '#f4f4f4' },
+  'rival-sandy': { suit: '#c9a26b', tie: '#3fae3a', shirt: true, shoes: '#5a2e14' },
+  'rival-carl': { suit: '#e07a1f', tie: '#2f8f2a', shirt: true, shoes: '#1a1210' },
 };
 
 type Fabric = 'limb' | 'body';

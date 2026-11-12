@@ -10,11 +10,12 @@ type Game = {
   phase: string;
   screen: string | null;
   replay: { end: number } | null;
-  match: { players: { rolls: number[] }[] } | null;
+  match: { players: { rolls: number[] }[]; recordRoll(pins: number): unknown } | null;
   physics: { ball: { translation(): { z: number } } };
   scene: { traverse(fn: (o: { visible: boolean; userData: Record<string, unknown> }) => void): void };
-  controls: { pause(): void; advance(): void; replay(): void; fastForward(): void };
+  controls: { pause(): void; advance(): void; replay(): void; fastForward(): void; canAim(): boolean };
   startGame(mode: string): void;
+  startCpu(id: string): void;
   throwBall(x?: number, aim?: number, power?: number, spin?: number): void;
 };
 declare const window: { __game: Game };
@@ -110,6 +111,18 @@ async function main() {
     await waitPhase(page, 'result');
     const rolls2 = await page.evaluate(() => window.__game.match!.players[0].rolls);
     check(rolls2.length === 2 || rolls[0] === 10, `second ball is scored (${rolls2.join()})`);
+
+    // vs CPU: after your frame, the rival bowls its own, then it's your turn again
+    await page.evaluate(() => window.__game.startCpu('pickle'));
+    await page.evaluate(() => {
+      const m = window.__game.match!;
+      m.recordRoll(9);
+      m.recordRoll(0); // your frame, scored straight away
+    });
+    check(!(await page.evaluate(() => window.__game.controls.canAim())), "your controls are locked on the rival's turn");
+    await page.waitForFunction(() => window.__game.match!.players[1].rolls.length > 0, null, { timeout: 120_000 });
+    const rivalRolls = await page.evaluate(() => window.__game.match!.players[1].rolls);
+    check(rivalRolls.length > 0, `the rival bowls a real ball (${rivalRolls.join()})`);
 
     check(errors.length === 0, `no errors in the console${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {
