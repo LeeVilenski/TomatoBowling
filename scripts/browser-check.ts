@@ -10,7 +10,7 @@ type Game = {
   phase: string;
   screen: string | null;
   replay: { end: number } | null;
-  match: { players: { rolls: number[] }[]; recordRoll(pins: number): unknown; frames: number } | null;
+  match: { players: { rolls: number[] }[]; recordRoll(pins: number): unknown; frames: number; current: number } | null;
   physics: { ball: { translation(): { z: number } } };
   scene: { traverse(fn: (o: { visible: boolean; userData: Record<string, unknown> }) => void): void };
   controls: { pause(): void; advance(): void; replay(): void; fastForward(): void; canAim(): boolean };
@@ -128,6 +128,20 @@ async function main() {
     const rivalRolls = await page.evaluate(() => window.__game.match!.players[1].rolls);
     check(rivalRolls.length > 0, `the rival bowls a real ball (${rivalRolls.join()})`);
 
+    // ⏩ Skip: rush through the rival's turn, then it's yours again
+    await page.evaluate(() => window.__game.startCpu('donut'));
+    await page.evaluate(() => {
+      const m = window.__game.match!;
+      m.recordRoll(9);
+      m.recordRoll(0);
+    });
+    await page.waitForSelector('#skip-btn:not([hidden])', { timeout: 30_000 });
+    await page.click('#skip-btn');
+    const skipStart = Date.now();
+    await page.waitForFunction(() => window.__game.match!.players[1].rolls.length > 0 && window.__game.match!.current === 0 && window.__game.phase === 'aiming', null, { timeout: 180_000 });
+    check(true, `skipping rushes the rival's frame and hands back to you (${((Date.now() - skipStart) / 1000).toFixed(0)} s here)`);
+    check(!(await page.isVisible('#skip-btn')), 'the skip button goes away on your turn');
+
     // Career: finish a match against Pickle Pete (one ball left: his, bowled for real)
     await page.evaluate(() => window.__game.startCareerMatch(0, 0, [10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 3, 4, 10, 10, 10, 3]));
     check((await page.evaluate(() => window.__game.match!.frames)) === 5, 'early career rivals play 5-frame matches');
@@ -139,6 +153,9 @@ async function main() {
     await page.click('#go-career [data-go="career"]');
     const open = await page.$$eval('#ladder .rung:not(.locked)', (els) => els.length);
     check(open === 2, `beating Pickle Pete unlocks Donut Dana (${open} rungs open)`);
+    await page.click('[data-go="careerstats"]');
+    const statsText = (await page.textContent('#stats-tiles')) ?? '';
+    check(statsText.includes('matches') && (await page.textContent('#stats-h2h'))!.includes('Pickle Pete'), 'the career stats page shows your numbers and record');
 
     // Later venues play under their own lane rule: on the Rooftop, a breeze each frame
     await page.evaluate(() => window.__game.startCareerMatch(3, 0));

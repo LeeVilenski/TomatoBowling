@@ -37,6 +37,10 @@ export interface Rival extends BowlerSkill {
   lines: Record<ReactionKind, string[]>;
   /** A bit of trash talk on the career match intro (one picked at random). */
   intro: string[];
+  /** What they say on the result card when they win the match... */
+  win: string[];
+  /** ...and when they lose it. */
+  lose: string[];
 }
 
 export const RIVALS: Rival[] = [
@@ -49,6 +53,8 @@ export const RIVALS: Rival[] = [
     outfit: 'rival-pickle',
     head: 'pickle',
     intro: ["Oh! Hello. I've been practising. A bit. Please go easy on me.", "I'm not nervous. You're nervous. Okay, I'm nervous.", 'Big dill today, huh?'],
+    win: ["I... I won? Somebody pinch me. Gently.", "Brine over brawn, Dave!"],
+    lose: ["That's fair. You were very good. I was very pickled.", "I'll get you next time. Probably not, but maybe!"],
     lines: {
       strike: ['Oh! Oh my. Did I do that?', 'Big dill!', 'Pickled tink!'],
       spare: ['Phew. Brine and dandy.', 'Relish the moment!', 'I got them!'],
@@ -72,6 +78,8 @@ export const RIVALS: Rival[] = [
     outfit: 'rival-donut',
     head: 'donut',
     intro: ['Hope you like it fast, sweetie.', "I don't do slow. Or straight-ish. Or careful.", 'Ready to get glazed?'],
+    win: ["Glazed you, sweetie!", "Fast beats careful. Every time."],
+    lose: ["Okay, okay, you got me. Hole in my game, remember?", "Too much sugar, not enough aim."],
     lines: {
       strike: ['Glazed and amazed!', 'Hole in one! Wait, wrong sport.', 'Sprinkle THAT!'],
       spare: ['Filled it!', 'Sweet.', 'Got the jam out of the middle.'],
@@ -95,6 +103,8 @@ export const RIVALS: Rival[] = [
     outfit: 'rival-sandy',
     head: 'sandwich',
     intro: ["Leave me a spare. I dare you.", "I've got layers, Dave. You've got... seeds.", "Let me guess: you're the filling?"],
+    win: ["Spares, Dave. It's always about the spares.", "Layered. Stacked. Victorious."],
+    lose: ["Hmph. You got lucky with that filling.", "Fine. You may have the last bite."],
     lines: {
       strike: ['Stacked it!', 'Toasted the lot.', 'A club sandwich special!'],
       spare: ['Spares are my bread and butter.', 'Layered to perfection.', 'As planned. Obviously.'],
@@ -119,6 +129,8 @@ export const RIVALS: Rival[] = [
     outfit: 'rival-carl',
     head: 'carrot',
     intro: ["So. The little tomato finally made it to the top rung.", "I've been champion here for years, Dave. Years.", "Ten frames. No hiding. Let's see what you've got."],
+    win: ["Still champion, little tomato. Still champion.", "Root and branch, Dave. Root and branch."],
+    lose: ["No... NO. The crown is... yours. For now.", "Enjoy it, tomato. I'll be back in the ground, growing stronger."],
     lines: {
       strike: ["That's the Carl special.", 'Root and branch!', 'Pure carrot-ine.', 'Some of us just have it, Dave.'],
       spare: ['Tidy.', 'Cleaned up, as usual.', 'Peeled right off.'],
@@ -146,7 +158,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 10, spin: 0, startX: 0.06 },
     accuracy: { angle: 0.0095, x: 0.04, speed: 0.6, spin: 0.06 },
     nerves: 0.6,
-    intro: ['Processing... processing... you lose.', "I run at 10 gigahertz. You run at... tomato."],
+    intro: ['Processing... processing... you lose.', "I run at 10 gigahertz. You run at... tomato.", "Your bowling has a memory leak, Dave."],
+    win: ["Task complete. You've been processed.", "Overclocked and undefeated."],
+    lose: ["Error. Error. Unexpected tomato.", "Rebooting... my pride."],
     lines: {
       strike: ['Overclocked!', 'Ready salted!', 'Zero latency.'],
       spare: ['Patched.', 'Crunched it.'],
@@ -170,7 +184,9 @@ export const RIVALS: Rival[] = [
     accuracy: { angle: 0.0105, x: 0.042, speed: 0.45, spin: 0.06 },
     nerves: 0.5,
     spareError: 0.8,
-    intro: ['By playing, you accept all cookies.', "I've been tracking your game, Dave. I know your every move."],
+    intro: ['By playing, you accept all cookies.', "I've been tracking your game, Dave. I know your every move.", "I already know what you'll do, Dave. I've been watching."],
+    win: ["All your pins are belong to me.", "Cookie: one. Tomato: crumbs."],
+    lose: ["Session expired.", "You've cleared my cache. And my confidence."],
     lines: {
       strike: ['Chocolate chip shot!', 'Accepted!', "That's the way the cookie crumbles!"],
       spare: ['Stored for later.', 'Session saved.'],
@@ -193,7 +209,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 8, spin: 0.45, startX: -0.22 },
     accuracy: { angle: 0.0078, x: 0.033, speed: 0.45, spin: 0.06 },
     nerves: 0.45,
-    intro: ["I'm wafer-thin, Dave, but I've got a lot of layers.", 'Left-handed hook. Right-handed attitude.'],
+    intro: ["I'm wafer-thin, Dave, but I've got a lot of layers.", 'Left-handed hook. Right-handed attitude.', "You'll crack before I do."],
+    win: ["Thin margins. Big win.", "Layer upon layer upon victory."],
+    lose: ["Snapped. Clean in half.", "Fine. You earned that. Barely."],
     lines: {
       strike: ['Etched it in silicon!', 'Wafer-perfect!', 'Layer cake!'],
       spare: ['Stacked.', 'All layers present.'],
@@ -216,7 +234,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 8.5, spin: -0.5, startX: 0.26 },
     accuracy: { angle: 0.007, x: 0.03, speed: 0.4, spin: 0.05 },
     nerves: 0.3,
-    intro: ['Welcome to my server room. Mind the cables. And the oil.', "Long oil, Dave. The hook comes late. If it comes at all."],
+    intro: ['Welcome to my server room. Mind the cables. And the oil.', "Long oil, Dave. The hook comes late. If it comes at all.", "My server, my rules, my oil."],
+    win: ["Fully cached, Dave. Better luck on reboot.", "Aged to perfection. Unlike you."],
+    lose: ["The cluster is... down. Well played.", "Take the root password. You've earned it."],
     lines: {
       strike: ['Fully cached.', 'Aged to perfection.', 'Root access granted.'],
       spare: ['Cleanly deployed.', 'Ripe for the picking.'],
@@ -241,7 +261,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 7, spin: -0.3, startX: 0.16 },
     accuracy: { angle: 0.0079, x: 0.034, speed: 0.5, spin: 0.08 },
     nerves: 0.8,
-    intro: ["Feel that beat, Dave? That's me wobbling.", "The pins bounce here. So do I."],
+    intro: ["Feel that beat, Dave? That's me wobbling.", "The pins bounce here. So do I.", "Can you feel it, Dave? The wobble?"],
+    win: ["Wobble wobble, winner!", "Set and dancing!"],
+    lose: ["I've completely melted.", "Lost the beat. And the match."],
     lines: {
       strike: ['Wobble wobble, strike!', 'Set perfectly!', 'Jiggy with it!'],
       spare: ['Still wobbling, still winning.', 'Set!'],
@@ -264,7 +286,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 8, spin: -0.65, startX: 0.3 },
     accuracy: { angle: 0.0064, x: 0.028, speed: 0.4, spin: 0.06 },
     nerves: 0.4,
-    intro: ['It takes two to tango. Shame you brought a tomato.', "Let's dance, Dave."],
+    intro: ['It takes two to tango. Shame you brought a tomato.', "Let's dance, Dave.", "Shall we dance?"],
+    win: ["And that's how you tango.", "Ripe and ready to win."],
+    lose: ["You led well, tomato. You led well.", "Bruised, but beautiful."],
     lines: {
       strike: ['Ripe and right!', 'Tango!', 'Juicy!'],
       spare: ['Smooth.', 'One more step.'],
@@ -288,7 +312,9 @@ export const RIVALS: Rival[] = [
     accuracy: { angle: 0.0059, x: 0.026, speed: 0.4, spin: 0.05 },
     nerves: 0.35,
     spareError: 0.7,
-    intro: ["When life gives you lemons, you lose to them.", "Pucker up, Dave."],
+    intro: ["When life gives you lemons, you lose to them.", "Pucker up, Dave.", "Got a squeeze on you already."],
+    win: ["Squeezed. Juiced. Done.", "Sour for you, sweet for me."],
+    lose: ["Ugh. That's bitter.", "You twisted me right up."],
     lines: {
       strike: ['Zesty!', "Squeezed 'em all!", 'Twist and shout!'],
       spare: ['A little twist.', 'Sharp.'],
@@ -311,7 +337,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 8.5, spin: -0.55, startX: 0.28 },
     accuracy: { angle: 0.0042, x: 0.02, speed: 0.35, spin: 0.05 },
     nerves: 0.25,
-    intro: ['Darling, this is MY dance floor.', "The pins bounce here, sweetie. Hope you can keep up."],
+    intro: ['Darling, this is MY dance floor.', "The pins bounce here, sweetie. Hope you can keep up.", "Try not to trip over my glamour, sweetie."],
+    win: ["Fabulous. As always.", "The dance floor is mine, darling."],
+    lose: ["Darling, I... I'm speechless. Truly.", "Take the floor. You've earned your moment."],
     lines: {
       strike: ['Fabulous!', 'Glossy!', 'And... pose!'],
       spare: ['Effortless, darling.', 'Naturally.'],
@@ -336,7 +364,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 7.5, spin: -0.45, startX: 0.22 },
     accuracy: { angle: 0.0053, x: 0.024, speed: 0.4, spin: 0.06 },
     nerves: 0.5,
-    intro: ['Lovely evening for it, eh Dave?', "Mind the breeze up here. It's eggs-hilarating."],
+    intro: ['Lovely evening for it, eh Dave?', "Mind the breeze up here. It's eggs-hilarating.", "Shall we get cracking?"],
+    win: ["Sunny side up, Dave!", "Egg-cellent game. For me."],
+    lose: ["You've scrambled me, Dave!", "Over easy. Very easy, for you."],
     lines: {
       strike: ['Egg-cellent!', 'Sunny side up!', 'Cracked it!'],
       spare: ['Over easy.', 'Scrambled them!'],
@@ -359,7 +389,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 9, spin: -0.3, startX: 0.16 },
     accuracy: { angle: 0.0045, x: 0.02, speed: 0.4, spin: 0.05 },
     nerves: 0.3,
-    intro: ['Stay cool, Dave. Oh wait, you\'re already sweating.', "I don't melt under pressure."],
+    intro: ['Stay cool, Dave. Oh wait, you\'re already sweating.', "I don't melt under pressure.", "Feeling the heat, Dave?"],
+    win: ["Ice cold. As promised.", "Chill out, Dave. It's only a game. That I won."],
+    lose: ["I'm melting... MELTING...", "Brain freeze. Total brain freeze."],
     lines: {
       strike: ['Ice cold!', 'Brain freeze!', 'Chill.'],
       spare: ['Cool.', 'Frozen in place.'],
@@ -383,7 +415,9 @@ export const RIVALS: Rival[] = [
     accuracy: { angle: 0.0043, x: 0.019, speed: 0.35, spin: 0.05 },
     nerves: 0.3,
     spareError: 0.7,
-    intro: ['Sweet as, Dave. Let\'s have a go.', "I don't mind a bit of wind. Do you?"],
+    intro: ['Sweet as, Dave. Let\'s have a go.', "I don't mind a bit of wind. Do you?", "Hope you brought a jumper, it's breezy up here."],
+    win: ["Sweet as, bro. Sweet as.", "Choice game. For me."],
+    lose: ["Fair go, mate. You got me.", "Bit of a tart finish, that."],
     lines: {
       strike: ['Sweet as!', 'Choice!', 'Fuzzy logic!'],
       spare: ['Tidy.', 'Sorted.'],
@@ -406,7 +440,9 @@ export const RIVALS: Rival[] = [
     style: { speed: 9, spin: -0.5, startX: 0.27 },
     accuracy: { angle: 0.0028, x: 0.013, speed: 0.3, spin: 0.04 },
     nerves: 0.2,
-    intro: ["Up here, it's just you, me and the wind, little tomato.", "I've seen a thousand sunsets from this lane. You're just another one."],
+    intro: ["Up here, it's just you, me and the wind, little tomato.", "I've seen a thousand sunsets from this lane. You're just another one.", "Big things grow from little spuds, Dave."],
+    win: ["Mashed, Dave. Completely mashed.", "Steady as a sack of spuds."],
+    lose: ["You've peeled me right back, tomato.", "Go on then. The rooftop's yours."],
     lines: {
       strike: ['Mashed!', 'Spud-tacular!', 'Couch-potato power!'],
       spare: ['Hash browned.', 'Steady.'],
@@ -432,7 +468,9 @@ export const RIVALS: Rival[] = [
     accuracy: { angle: 0.0012, x: 0.006, speed: 0.2, spin: 0.02 },
     nerves: 0.15,
     spareError: 0.6,
-    intro: ['So. The tomato who would be king. Kneel, and we may begin.', 'Dry lanes, little tomato. The hook comes early. Do try to keep up.'],
+    intro: ['So. The tomato who would be king. Kneel, and we may begin.', 'Dry lanes, little tomato. The hook comes early. Do try to keep up.', "Your crown awaits... somewhere else."],
+    win: ["Kneel, little tomato. Kneel.", "The Golden Pin remains MINE."],
+    lose: ["Impossible! A TOMATO? On MY throne?", "Take the crown, then. Wear it... well."],
     lines: {
       strike: ['As is my right!', 'Bow before me!', 'Gourd-geous!'],
       spare: ['Naturally.', 'A royal clean-up.'],

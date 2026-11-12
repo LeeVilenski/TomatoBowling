@@ -8,6 +8,8 @@ import {
   ladderOf,
   laneFor,
   metRivals,
+  addMatchStats,
+  ballStats,
   hadTurkey,
   isChampion,
   isUnlocked,
@@ -137,5 +139,27 @@ describe('the whole career', () => {
     expect(winds[3]).toBeGreaterThan(0);
     expect(Math.max(...winds.map(Math.abs))).toBeLessThanOrEqual(rooftop.rule!.breeze!);
     expect(winds.every((w) => w !== 0)).toBe(true); // never perfectly still up there
+  });
+});
+
+describe('career stats', () => {
+  it('counts strikes and spares against their chances', () => {
+    // X, 7/, 9-, 6 2, then a last frame of X X 3: seven balls at a full rack, three at a leave
+    expect(ballStats([10, 7, 3, 9, 0, 6, 2, 10, 10, 3], 5)).toEqual({ strikes: 3, strikeChances: 7, spares: 1, spareChances: 3 });
+    expect(ballStats(Array(12).fill(10), 10)).toEqual({ strikes: 12, strikeChances: 12, spares: 0, spareChances: 0 });
+  });
+
+  it('adds up across matches, keeping full and short games apart', () => {
+    let save = addMatchStats(NEW_CAREER, Array(12).fill(10), 10, true, 0);
+    save = addMatchStats(save, [9, 0, 9, 0, 9, 0, 9, 0, 9, 0], 5, false, 1);
+    save = addMatchStats(save, Array(20).fill(4), 10, false, 0);
+    expect(save.stats).toMatchObject({ matches: 3, wins: 1, games10: 2, pins10: 380, best10: 300, best5: 45, splitsConverted: 1 });
+  });
+
+  it('survives recording a result, and old saves without stats', () => {
+    const save = addMatchStats(NEW_CAREER, [9, 0, 9, 0, 9, 0, 9, 0, 9, 0], 5, true, 0);
+    expect(recordResult(save, 'pickle', 45, 30, 1).stats?.matches).toBe(1);
+    expect(loadCareer({ version: 1, results: {} }).stats).toBeUndefined();
+    expect(loadCareer({ version: 1, results: {}, stats: { matches: 2 } }).stats).toMatchObject({ matches: 2, wins: 0 });
   });
 });

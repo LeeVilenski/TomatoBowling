@@ -63,6 +63,8 @@ export class GameTracker {
   /** Strikes in a row right now. */
   streak = 0;
   private splitLeft = false;
+  /** Splits picked up this game. */
+  splitsConverted = 0;
 
   /** Call after each ball with how the throw went. Returns progress changes to merge. */
   record(kind: 'strike' | 'spare' | 'split' | 'other'): Partial<Progress> {
@@ -75,7 +77,10 @@ export class GameTracker {
     } else {
       this.streak = 0;
     }
-    if (kind === 'spare' && this.splitLeft) out.splitConverted = true;
+    if (kind === 'spare' && this.splitLeft) {
+      out.splitConverted = true;
+      this.splitsConverted++;
+    }
     this.splitLeft = kind === 'split';
     return out;
   }

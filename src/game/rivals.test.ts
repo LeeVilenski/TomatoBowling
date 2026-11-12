@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickLine } from './reactions';
+import { pickLine, pickVsLine } from './reactions';
 import { RIVALS } from './rivals';
 
 describe('rivals', () => {
@@ -18,5 +18,21 @@ describe('rivals', () => {
       expect(line).not.toBe(last);
       last = line;
     }
+  });
+});
+
+describe('trash talk', () => {
+  it('every rival has three intros and something to say win or lose', () => {
+    for (const r of RIVALS) {
+      expect(r.intro.length, r.name).toBeGreaterThanOrEqual(3);
+      expect(r.win.length, r.name).toBeGreaterThanOrEqual(2);
+      expect(r.lose.length, r.name).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("Dave sometimes talks back to the rival after a big ball", () => {
+    expect(pickVsLine('strike', 'Carrot Carl', () => 0)).toBe('Your move, Carrot Carl.');
+    expect(pickVsLine('strike', 'Carrot Carl', () => 0.9)).toBeNull(); // most of the time, his usual lines
+    expect(pickVsLine('gutter', 'Carrot Carl', () => 0)).toBeNull(); // no gloating after a gutter ball
   });
 });

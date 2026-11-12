@@ -140,3 +140,16 @@ export function streakName(strikesInARow: number): string | null {
   if (strikesInARow === 4) return 'HAMBONE!';
   return `${strikesInARow}-BAGGER!`;
 }
+
+/** Dave's lines aimed at a computer rival after a big ball ({name} is their name). */
+export const VS_LINES: Partial<Record<ReactionKind, string[]>> = {
+  strike: ['Your move, {name}.', 'Top that, {name}!', 'Beat THAT, {name}.', 'Ketchup with that, {name}!'],
+  spare: ['Not so fast, {name}.', 'Still in this, {name}!', 'Patched it. Your turn, {name}.'],
+};
+
+/** Against a rival, Dave sometimes talks to them instead (about two times in five). */
+export function pickVsLine(kind: ReactionKind, rivalName: string, random = Math.random): string | null {
+  const pool = VS_LINES[kind];
+  if (!pool || random() >= 0.4) return null;
+  return pool[Math.floor(random() * pool.length)].replace('{name}', rivalName);
+}
