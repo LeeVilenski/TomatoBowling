@@ -1,6 +1,6 @@
 # Tomato Dave's Ten-pin
 
-A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the full plan.
+A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the full plan, and [CAREER.md](CAREER.md) for the planned career mode.
 
 **Current state: Stage 4.** Tomato Dave is in! He holds the ball, swings and slides into each throw, then reacts to every result with a speech bubble (strikes, spares, splits, gutters...). Tomato juice splashes when the ball hits the pins, and the alley has a neon sign, a ball return and neighbouring lanes.
 
@@ -33,7 +33,11 @@ Also: a "How to bowl" card on your first game (and in the pause menu), a Graphic
 | Disco Inferno | Mirror ball, sweeping spotlights, flashing dance floor | "Disco Dave" (disco) |
 | Rooftop at Sunset | Open sky, city skyline, string lights | "Bossa Marinara" (bossa nova) |
 
-**Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera inside the pinsetter, peeking out from under the masking unit. Every pin is in view as the ball rolls down the lane towards them; the camera tilts down as it arrives and drops into slow motion for the impact, juice and all. Tap to skip.
+**Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera inside the pinsetter, peeking out from under the masking unit. Every pin is in view as the ball rolls down the lane towards them; the camera tilts down as it arrives and drops into slow motion for the impact, juice and all. Strikes replay automatically. Tap to skip.
+
+**Overhead scoreboard:** the monitor above the lane shows the live scorecard (every player in Pass & Play), themed to each venue, and plays a little animation after a strike, spare or gutter ball, with the camera glancing up at it while the pinsetter works. Three strikes in a row get a TURKEY! banner (then HAMBONE!, 5-BAGGER! and so on).
+
+**Pace:** Dave always has something to say about strikes, spares, splits and gutter balls, but only sometimes about an ordinary count, so the game keeps moving. The controls hint fades away after your first few throws.
 
 After each throw the tomato rolls home along a ball return chute between the lanes. And the tomato isn't perfectly round: when its stem rolls under, it can give the ball a small hop at a random point down the lane.
 
@@ -41,7 +45,7 @@ There are three modes:
 
 - **Play:** a full 10-frame game with standard scoring (strikes, spares, 10th-frame bonus balls). Your best score is saved on this device.
 - **Pass & Play:** 2–4 players take turns on one device. A "pass the device" screen appears between turns.
-- **Practice:** unlimited throws, plus one-tap setups for common spares (10 pin, 7 pin, 7-10 split, bucket, big four).
+- **Practice:** unlimited throws, plus one-tap setups for common spares (10 pin, 7 pin, 7-10 split, bucket, big four). The yellow aim line shows exactly where the ball will go (it's worked out with the real physics, at the speed of your last throw), and a blue line shows where your last throw actually went.
 
 You throw by swiping on touch screens, or by holding and releasing with a mouse or keyboard. Spin makes the ball hook late in the lane.
 

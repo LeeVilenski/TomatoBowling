@@ -51,7 +51,8 @@ export function newlyUnlocked(before: Progress, after: Progress): Item[] {
 /** Tracks one player's streaks through a game and reports progress as it happens. */
 export class GameTracker {
   strikes = 0;
-  private streak = 0;
+  /** Strikes in a row right now. */
+  streak = 0;
   private splitLeft = false;
 
   /** Call after each ball with how the throw went. Returns progress changes to merge. */
