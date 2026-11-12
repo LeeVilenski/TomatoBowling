@@ -217,6 +217,9 @@ async function start() {
     bannerTimer = window.setTimeout(() => (banner.hidden = true), 2200);
   }
   const pacer = new CommentPacer();
+  const rivalPacer = new CommentPacer();
+  /** Who's reacting to this ball: a computer rival, or null for Dave. */
+  let speaker: Rival | null = null;
   // The controls hint fades away once the player has the hang of it
   let throwsMade = storage.count('throws');
   const hint = $('hint');
@@ -312,9 +315,11 @@ async function start() {
     reactionShown = false;
     const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
-    // A computer rival's ball: no comment from Dave, no automatic replay (the button's there)
+    // A computer rival's ball: the rival has its own say (at the same pace as Dave), and
+    // there's no automatic replay (the button's there)
     const rivalBall = cpuTurn();
-    daveComments = !rivalBall && pacer.shouldComment(reaction);
+    speaker = rivalBall ? rival : null;
+    daveComments = rivalBall ? rivalPacer.shouldComment(reaction) : pacer.shouldComment(reaction);
     autoReplay = !rivalBall && reaction === 'strike' && lastReplay !== null;
     autoReplayAt = AUTO_REPLAY_AT;
     if (reaction === 'strike') {
@@ -426,7 +431,9 @@ async function start() {
     const pos = match.position;
     if (mode === 'cpu' && rival) {
       // The rival bowls in its own colours; you in yours
+      // The rival bowls in Dave's body, wearing its own head and suit
       dave.setOutfit(cpuTurn() ? rival.outfit : equipped.suit);
+      dave.setHead(cpuTurn() ? rival.head : 'tomato');
       if (cpuTurn()) {
         cpuTimer = CPU_THINK;
         cpuThrow = null;
@@ -510,6 +517,9 @@ async function start() {
     legend.hidden = !(id === null && mode === 'practice');
     if (id === 'menu') {
       scoreboard.showIdle();
+      // Dave hosts the menu as himself, even if a rival was mid-turn
+      dave.setHead('tomato');
+      dave.setOutfit(equipped.suit);
       if (phase === 'replay') endReplay();
       dave.wave();
       speech.hide();
@@ -524,6 +534,7 @@ async function start() {
     mode = newMode;
     cpuThrow = null;
     dave.setOutfit(equipped.suit);
+    dave.setHead('tomato');
     match = newMode === 'practice' ? null : new Match(names);
     trackers = names.map(() => new GameTracker());
     gameUnlocks = [];
@@ -570,7 +581,7 @@ async function start() {
       const b = document.createElement('button');
       b.className = 'rival';
       const rec = record[r.id];
-      b.innerHTML = `<span class="rname">${escapeHtml(r.name)}</span><span class="rstars" aria-label="${r.stars} of 5 stars">${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span></span><span class="rblurb">${escapeHtml(r.blurb)}</span>${
+      b.innerHTML = `<span class="rname">${r.emoji} ${escapeHtml(r.name)}</span><span class="rstars" aria-label="${r.stars} of 5 stars">${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span></span><span class="rblurb">${escapeHtml(r.blurb)}</span>${
         rec ? `<span class="rrecord">You: won ${rec.w} · lost ${rec.l}${rec.t ? ` · tied ${rec.t}` : ''}</span>` : ''
       }`;
       b.addEventListener('click', () => startCpu(r.id));
@@ -595,6 +606,7 @@ async function start() {
     // Against the computer, only your own score counts towards unlocks
     const top = mode === 'cpu' ? totals[0] : Math.max(...totals);
     dave.setOutfit(equipped.suit);
+    dave.setHead('tomato');
     const won = mode === 'cpu' ? totals[0] > totals[1] : true;
     dave.react(!won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
@@ -1118,7 +1130,7 @@ async function start() {
       if (resultTime >= REACTION_AT && !reactionShown) {
         reactionShown = true;
         dave.react(reaction);
-        speech.show(pickLine(reaction));
+        speech.show(speaker ? pickLine(reaction, Math.random, speaker.lines, speaker.id) : pickLine(reaction));
       }
       if (resultTime > RESULT_PAUSE) nextAfterResult();
     }

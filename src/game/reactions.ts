@@ -92,13 +92,18 @@ export const LINES: Record<ReactionKind, string[]> = {
   ],
 };
 
-const lastLine = new Map<ReactionKind, string>();
+const lastLine = new Map<string, string>();
 
-/** A random line for the reaction, avoiding the one used last time. */
-export function pickLine(kind: ReactionKind, random = Math.random): string {
-  const pool = LINES[kind].filter((l) => l !== lastLine.get(kind));
+/**
+ * A random line for the reaction, avoiding the one used last time. Dave's lines by
+ * default; pass `lines` (and a `who` to keep track of separately) for someone else's.
+ */
+export function pickLine(kind: ReactionKind, random = Math.random, lines: Record<ReactionKind, string[]> = LINES, who = 'dave'): string {
+  const key = `${who}:${kind}`;
+  const all = lines[kind];
+  const pool = all.length > 1 ? all.filter((l) => l !== lastLine.get(key)) : all;
   const line = pool[Math.floor(random() * pool.length)];
-  lastLine.set(kind, line);
+  lastLine.set(key, line);
   return line;
 }
 

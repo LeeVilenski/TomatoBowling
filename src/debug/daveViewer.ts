@@ -1,11 +1,14 @@
 // Dev-only page (debug-dave.html): shows Dave in each pose so the model can be checked.
 import * as THREE from 'three';
 import { Dave } from '../scene/dave';
+import type { HeadId } from '../scene/heads';
 import type { ReactionKind } from '../game/reactions';
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') ?? 'front';
 const outfit = params.get('outfit');
+// ?head=pickle (or donut, sandwich, carrot) shows a rival's head; ?head=all lines them all up
+const head = params.get('head');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -25,6 +28,9 @@ const states: (string)[] = ['idle', 'charge', 'swing-release', 'follow', 'strike
 const daves = states.map((s, i) => {
   const d = new Dave();
   if (outfit) d.setOutfit(outfit);
+  const heads: HeadId[] = ['tomato', 'pickle', 'donut', 'sandwich', 'carrot'];
+  if (head === 'all') d.setHead(heads[i % heads.length]);
+  else if (head) d.setHead(head as HeadId);
   d.setStance((i - (states.length - 1) / 2) * 0.9, 0);
   scene.add(d.root);
   if (s === 'charge') d.charge(0.8);
