@@ -1,6 +1,6 @@
 # Career Mode: Plan
 
-A single-player ladder. Dave works his way from his home lane to the Golden Pin by beating a run of rival bowlers, one venue at a time. This plan covers how it plays, who's in it, how the opponents bowl, what you earn, and the order to build it in. Nothing here is built yet. The **Questions for you** section at the end lists the decisions that would change the plan.
+A single-player ladder. Dave works his way from his home lane to the Golden Pin by beating a run of rival bowlers, one venue at a time. This plan covers how it plays, who's in it, how the opponents bowl, what you earn, and the order to build it in. Nothing here is built yet. The decisions made so far are listed in **Decisions** at the end.
 
 ---
 
@@ -21,7 +21,9 @@ Each venue is a **league** with three rivals and a **champion**. You play each r
 | Final | The Golden Pin (new venue) | — | The Pumpkin King | Golden Dave suit, credits |
 
 - **Ladder screen:** a vertical "tournament poster" for each venue. The rivals sit as rungs with faces, records and a star rating, and the champion is at the top. Beaten rivals get a stamped tomato.
-- **Match lengths** grow with the stages: 5-frame matches at stage 1, so new players get quick wins, then 10 frames from stage 2.
+- **Match lengths:** 5-frame matches against the early rivals, so new players get quick wins, and full 10-frame games against every champion and throughout stage 2 onwards.
+- **Turns:** you and the rival alternate frames, as in Pass & Play. The rival's turns can be fast-forwarded.
+- **Losing:** no penalty. Rematch any rival straight away.
 - **Venue rules** add variety without new systems. Each venue has a twist that changes one existing knob:
   - *Server Room:* **"Low latency"**, a shorter power meter swing (faster timing).
   - *Disco:* **"Fresh oil"**, a longer oiled section, so the hook comes later.
@@ -34,18 +36,18 @@ Each venue is a **league** with three rivals and a **champion**. You play each r
 
 ## 3. The rivals
 
-Original characters in Dave's world: produce with day jobs, matching his half-tomato, half-IT humour. Each one has a look, a bowling style, a few speech-bubble lines, and stats the AI bowls from (section 4).
+Original characters in Dave's world: a mixed bag of foods with day jobs, matching his half-tomato, half-IT humour. Each one has a look, a bowling style, a few speech-bubble lines, and stats the AI bowls from (section 4).
 
 | Rival | Style | Accuracy | Power | Hook | Nerves | Personality |
 |---|---|---|---|---|---|---|
-| Spud Junior | Straight and slow | ★☆☆ | ★☆☆ | none | ★★★ | Keen, polite, terrible |
-| Leek Lewis | Straight, fast | ★★☆ | ★★★ | none | ★★☆ | All gas, no brakes |
-| Radish Rae | Small hook | ★★☆ | ★★☆ | ★☆☆ | ★★☆ | Smug about her spares |
+| Pickle Pete | Straight and slow | ★☆☆ | ★☆☆ | none | ★★★ | Keen, polite, terrible, sweats brine under pressure |
+| Donut Dana | Straight, fast | ★★☆ | ★★★ | none | ★★☆ | All gas, no brakes, a hole in her game |
+| Sandy Wich | Small hook | ★★☆ | ★★☆ | ★☆☆ | ★★☆ | Smug about her spares, always layered |
 | **Carrot Carl** (champ 1) | Steady | ★★★ | ★★☆ | ★☆☆ | ★★★ | Your old rival from home |
 | … medium/hard rivals | | | | | | named per venue |
 | **The Pumpkin King** | Big hook, rarely misses | ★★★★★ | ★★★★ | ★★★★ | ★★★★★ | Grand, theatrical, wears a crown |
 
-The rivals reuse Dave's body with a new head (carrot, potato, aubergine, pumpkin…) and suit colours. That's the same build-it-in-code approach, so each new character is a head shape, a face texture and a palette, not a new model.
+The rivals reuse Dave's body with a new head (a pickle, a doughnut, a sandwich, a carrot, a wedge of brie, an aubergine, a potato, a pumpkin…) and suit colours. That's the same build-it-in-code approach, so each new character is a head shape, a face texture and a palette, not a new model.
 
 ---
 
@@ -61,7 +63,7 @@ The rival throws real balls through the **same physics** as you, so their result
    - *Nerves:* extra error in the 10th frame, or when the match is close.
 
    An easy rival misses the pocket by a board or three; the Pumpkin King barely misses.
-4. **Tuning.** Run the AI through `check:physics`-style simulations (say 200 games per rival) and record each rival's average score. Target averages: about 70 for Spud Junior, about 120 for Carl, 160–180 for stage-3 rivals, about 220 for the Pumpkin King. Tune the noise until each lands in its band. This becomes a regression check, so later physics tweaks can't quietly make a rival unbeatable.
+4. **Tuning.** Run the AI through `check:physics`-style simulations (say 200 games per rival) and record each rival's average score. Target averages: about 70 for Pickle Pete, about 120 for Carl, 160–180 for stage-3 rivals, about 220 for the Pumpkin King. Tune the noise until each lands in its band. This becomes a regression check, so later physics tweaks can't quietly make a rival unbeatable.
 
 The rival's turn reuses everything that already exists (pinsetter, replay, scoreboard, reactions), so they bowl "on camera" just like Dave. A ⏩ skip would fast-forward the rival's turn for impatient players.
 
@@ -113,7 +115,7 @@ interface CareerSave {
 Each step is playable on its own and can ship by itself:
 
 1. **AI bowler on the existing lane.** Rival data, the target-and-search AI, and noise from stats. Add one "vs CPU" quick match to the menu, using Dave's model with a different head. *This is the core risk, so it goes first.* Includes the simulation tuning harness.
-2. **Rival heads.** Carrot, potato, leek, radish, aubergine, pumpkin: head geometry, face textures and palettes, plus a few reaction lines each.
+2. **Rival heads.** Pickle, doughnut, sandwich and carrot first (the home ladder), then brie, aubergine, potato and pumpkin: head geometry, face textures and palettes, plus a few reaction lines each.
 3. **Ladder for stage 1.** Ladder screen, match intro and result cards, saving, stars. Three rivals plus Carrot Carl at Tomato Dave's.
 4. **Stages 2–4.** The remaining rivals and venue rules (latency, fresh oil, breeze, dry lanes), each tuned with the harness.
 5. **The Golden Pin.** A new final venue (a gold-and-velvet hall, its own music track), the Pumpkin King, and an ending with credits.
@@ -121,12 +123,17 @@ Each step is playable on its own and can ship by itself:
 
 A rough size guide: step 1 is the biggest single piece of work. Steps 2–4 are mostly content once 1 and 3 exist.
 
+**First version = steps 1–3:** the CPU bowler, the home-venue rivals' heads, and the full Tomato Dave's ladder (three rivals plus Carrot Carl). Stages 2–4 and the final follow once the AI and pacing feel right.
+
 ---
 
-## Questions for you
+## Decisions
 
-1. **Match format:** alternating frames (like Pass & Play, which builds tension), or each bowler plays a full game in turn (simpler, but you watch the rival for a while)?
-2. **Rival cast:** happy with produce characters (carrot, potato, aubergine, pumpkin…), or would you like a mix (rival tomatoes, other foods)?
-3. **Losing:** no penalty, or some light stakes, such as a "best of three" against champions?
-4. **Venue rules:** keep them (they make each venue play differently), or keep career purely about opponents?
-5. **Length:** 4 venues + final (about 15–20 matches), or shorter (2 venues + final) for a first version?
+| Question | Decision |
+|---|---|
+| Match format | Alternate frames with the rival, like Pass & Play; rival turns can be fast-forwarded |
+| Rival cast | A mix of foods (pickle, doughnut, sandwich, carrot, brie, aubergine, potato, pumpkin…) |
+| Losing | No penalty: rematch freely |
+| Match length | 5 frames against early rivals, 10 against champions and from stage 2 on |
+| Venue rules | Yes, one twist per venue (from stage 2; the home venue plays normally) |
+| First version | Start small: CPU bowler + the full Tomato Dave's ladder, then grow |
