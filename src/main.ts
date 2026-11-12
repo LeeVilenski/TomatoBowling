@@ -92,7 +92,9 @@ async function start() {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
   scene.environmentIntensity = 0.18;
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 60);
+  // Far plane reaches past the rooftop skyline (towers up to ~150 m out); anything nearer
+  // would slice the closest towers into stray boxes behind the sign
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 220);
   const rig = new CameraRig(camera);
   const { keyLight, hemi, fill } = buildAlley(scene);
   const scoreboard = new Scoreboard();
