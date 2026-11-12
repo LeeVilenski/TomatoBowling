@@ -494,11 +494,11 @@ async function start() {
       body.innerHTML = `<div class="big-score">${score}</div><p class="small">${
         isBest ? (best > 0 ? '🍅 New personal best!' : '🍅 First game in the books!') : `Your best: ${best}`
       }</p>${unlockNote}`;
-      leaderboard.offer(score, [...match.players[0].rolls]);
+      leaderboard.offer([{ score, rolls: [...match.players[0].rolls] }]);
     } else {
       const leaders = match.leaders();
       const order = match.players.map((p, i) => ({ name: p.name, score: totals[i], i })).sort((a, b) => b.score - a.score);
-      leaderboard.hideForm();
+      leaderboard.offer(order.map((r) => ({ name: match!.players[r.i].name, score: r.score, rolls: [...match!.players[r.i].rolls] })));
       $('go-title').textContent = leaders.length > 1 ? "It's a tie!" : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)

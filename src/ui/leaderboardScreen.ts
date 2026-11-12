@@ -3,72 +3,100 @@ import { fetchTopScores, LeaderboardError, submitScore, type LeaderboardEntry } 
 import { storage } from '../save/storage';
 import { $, escapeHtml } from './screens';
 
+/** One score waiting to be sent, with its own row on the game-over screen. */
+interface Entry {
+  score: number;
+  rolls: number[];
+  input: HTMLInputElement;
+  button: HTMLButtonElement;
+  msg: HTMLElement;
+  sent: boolean;
+}
+
 export class LeaderboardScreen {
   private form = $('submit-form') as HTMLFormElement;
-  private nameInput = $('lb-name') as HTMLInputElement;
-  private submitBtn = $('lb-submit') as HTMLButtonElement;
-  private msg = $('lb-msg');
-  private pending: { score: number; rolls: number[] } | null = null;
+  private list = $('lb-entries');
+  private entries: Entry[] = [];
   /** The list returned with this device's latest submission, and where that entry sits in it. */
   private fresh: { scores: LeaderboardEntry[]; index: number } | null = null;
 
   /** `show` opens the leaderboard screen itself. */
   constructor(private show: () => void) {
-    this.form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      void this.submit();
-    });
+    this.form.addEventListener('submit', (e) => e.preventDefault());
     $('lb-view').addEventListener('click', () => void this.open());
   }
 
-  /** Offer to submit a finished single-player game. */
-  offer(score: number, rolls: number[]) {
-    this.pending = { score, rolls };
+  /**
+   * Offer to submit finished scores: one for a solo game, one per player in pass-and-play.
+   * `name` prefills the box (a solo game uses the nickname saved on this device).
+   */
+  offer(players: { name?: string; score: number; rolls: number[] }[]) {
+    this.list.innerHTML = '';
+    this.entries = players.map((p) => {
+      const row = document.createElement('div');
+      row.className = 'lb-entry';
+      row.innerHTML = `<div class="player-input">${
+        players.length > 1 ? `<span class="lb-pts">${p.score}</span>` : ''
+      }<input maxlength="12" autocomplete="nickname" placeholder="Your name" aria-label="Name for score ${p.score}" /><button type="button" class="primary">Submit</button></div><p class="small lb-msg" aria-live="polite"></p>`;
+      const entry: Entry = {
+        score: p.score,
+        rolls: p.rolls,
+        input: row.querySelector('input')!,
+        button: row.querySelector('button')!,
+        msg: row.querySelector('.lb-msg')!,
+        sent: false,
+      };
+      entry.input.value = p.name ?? storage.nickname();
+      entry.button.addEventListener('click', () => void this.submit(entry));
+      // Enter in a name box sends that row's score.
+      entry.input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void this.submit(entry);
+        }
+      });
+      this.list.appendChild(row);
+      return entry;
+    });
+    $('lb-prompt').textContent =
+      players.length > 1 ? 'Add your scores to the online leaderboard' : 'Add your score to the online leaderboard';
     this.form.hidden = false;
-    this.nameInput.disabled = false;
-    this.submitBtn.disabled = false;
-    this.submitBtn.textContent = 'Submit';
-    this.nameInput.value = storage.nickname();
-    this.setMsg('');
     $('lb-view').hidden = true;
   }
 
-  hideForm() {
-    this.form.hidden = true;
+  private setMsg(entry: Entry, text: string, kind: '' | 'error' | 'good' = '') {
+    entry.msg.textContent = text;
+    entry.msg.className = 'small lb-msg ' + kind;
   }
 
-  private setMsg(text: string, kind: '' | 'error' | 'good' = '') {
-    this.msg.textContent = text;
-    this.msg.className = 'small ' + kind;
-  }
-
-  private async submit() {
-    const pending = this.pending;
-    if (!pending) return;
-    const name = this.nameInput.value.trim();
+  private async submit(entry: Entry) {
+    if (entry.sent || entry.button.disabled) return;
+    const name = entry.input.value.trim();
     if (!name) {
-      this.setMsg('Please enter a name.', 'error');
+      this.setMsg(entry, 'Please enter a name.', 'error');
       return;
     }
-    this.submitBtn.disabled = true;
-    this.submitBtn.textContent = 'Sending…';
-    this.setMsg('');
+    entry.button.disabled = true;
+    entry.button.textContent = 'Sending…';
+    this.setMsg(entry, '');
     try {
-      const res = await submitScore(name, pending.score, pending.rolls);
-      storage.saveNickname(res.entry.name);
+      const res = await submitScore(name, entry.score, entry.rolls);
+      if (this.entries.length === 1) storage.saveNickname(res.entry.name);
       this.fresh = { scores: res.scores, index: res.rank - 1 };
-      this.pending = null;
-      this.nameInput.disabled = true;
-      this.submitBtn.textContent = 'Sent ✓';
+      entry.sent = true;
+      entry.input.disabled = true;
+      entry.button.textContent = 'Sent ✓';
       $('lb-view').hidden = false;
+      const who = this.entries.length > 1 ? `${res.entry.name} is` : "You're";
       this.setMsg(
-        res.rank <= 50 ? `You're #${res.rank} on the leaderboard! 🍅` : `Submitted! You're #${res.rank} — keep bowling to reach the top 50.`,
+        entry,
+        res.rank <= 50 ? `${who} #${res.rank} on the leaderboard! 🍅` : `Submitted! ${who} #${res.rank} — keep bowling to reach the top 50.`,
         'good',
       );
     } catch (err) {
-      this.submitBtn.disabled = false;
-      this.submitBtn.textContent = 'Submit';
-      this.setMsg(err instanceof LeaderboardError ? err.message : 'Something went wrong. Try again.', 'error');
+      entry.button.disabled = false;
+      entry.button.textContent = 'Submit';
+      this.setMsg(entry, err instanceof LeaderboardError ? err.message : 'Something went wrong. Try again.', 'error');
     }
   }
 
