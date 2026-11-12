@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ReactionKind } from '../game/reactions';
 import { createFaceTextures, type Expression } from './face';
+import { buildHead, HEADS, type HeadId } from './heads';
 
 // Tomato Dave: a man in a suit with a tomato for a head, built from simple shapes.
 // He faces -Z (down the lane). All animation is procedural: each state produces a target
@@ -168,6 +169,10 @@ export class Dave {
   private faceMat: THREE.MeshBasicMaterial;
   private headMat: THREE.MeshStandardMaterial;
   private faces = createFaceTextures();
+  /** Dave's tomato, and any rival heads built so far (rivals bowl in Dave's body). */
+  private headGroups = new Map<HeadId, { group: THREE.Group; faceMat: THREE.MeshBasicMaterial; faces: Record<Expression, THREE.Texture> }>();
+  private headId: HeadId = 'tomato';
+  private neckMat!: THREE.MeshStandardMaterial;
   private suitMat!: THREE.MeshStandardMaterial;
   /** Arms and legs, and the jacket: these take the outfit's fabric texture. */
   private limbMat!: THREE.MeshStandardMaterial;
@@ -321,9 +326,12 @@ export class Dave {
     this.arms.R.elbow.add(this.handAnchor);
 
     // Neck (a green stalk) and the tomato head
-    this.spine.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 18), flat('#3f8f2a'), 0.63));
+    this.neckMat = flat('#3f8f2a');
+    this.spine.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 18), this.neckMat, 0.63));
     this.headPivot.position.y = 0.66;
     this.spine.add(this.headPivot);
+    const tomato = new THREE.Group();
+    this.headPivot.add(tomato);
     const R = 0.23;
     const headGeo = new THREE.SphereGeometry(R, 48, 32);
     const pos = headGeo.attributes.position;
@@ -339,7 +347,7 @@ export class Dave {
     this.headMat = new THREE.MeshStandardMaterial({ color: this.headRed, roughness: 0.25 });
     const head = mesh(headGeo, this.headMat, R * 0.88);
     head.scale.y = 0.88;
-    this.headPivot.add(head);
+    tomato.add(head);
 
     // Face: a patch on the front of the head showing the current expression
     this.faceMat = new THREE.MeshBasicMaterial({ map: this.faces.neutral, transparent: true, depthWrite: false });
@@ -349,7 +357,7 @@ export class Dave {
     );
     facePatch.position.y = R * 0.88;
     facePatch.scale.y = 0.88;
-    this.headPivot.add(facePatch);
+    tomato.add(facePatch);
 
     // Leafy top and stalk
     const leafMat = new THREE.MeshStandardMaterial({ color: '#2f8f2a', roughness: 0.6, side: THREE.DoubleSide, flatShading: true });
@@ -366,11 +374,12 @@ export class Dave {
       leaf.rotation.x = -Math.PI / 2 - 0.35;
       leaf.castShadow = true;
       pivot.add(leaf);
-      this.headPivot.add(pivot);
+      tomato.add(pivot);
     }
-    this.headPivot.add(mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.07, 6), leafMat, R * 0.88 * 2 + 0.03));
+    tomato.add(mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.07, 6), leafMat, R * 0.88 * 2 + 0.03));
     this.headTop.position.y = R * 2;
     this.headPivot.add(this.headTop);
+    this.headGroups.set('tomato', { group: tomato, faceMat: this.faceMat, faces: this.faces });
   }
 
   /** Changes Dave's outfit: 'navy', 'tuxedo', 'pinstripe' or 'tracksuit'. */
@@ -402,6 +411,31 @@ export class Dave {
   }
 
   // ---------- Commands ----------
+
+  /** Which head is on the body: Dave's tomato, or a rival's. */
+  setHead(id: HeadId) {
+    if (id === this.headId) return;
+    let head = this.headGroups.get(id);
+    if (!head) {
+      const spec = HEADS[id];
+      const faces = createFaceTextures(spec.face);
+      const faceMat = new THREE.MeshBasicMaterial({ map: faces.neutral, transparent: true, depthWrite: false });
+      const built = buildHead(id as Exclude<HeadId, 'tomato'>, faceMat);
+      head = { group: built.group, faceMat, faces };
+      this.headPivot.add(built.group);
+      this.headGroups.set(id, head);
+    }
+    this.headGroups.get(this.headId)!.group.visible = false;
+    head.group.visible = true;
+    this.headId = id;
+    this.headTop.position.y = HEADS[id].top;
+    this.neckMat.color.set(HEADS[id].neck);
+  }
+
+  /** The head being worn, and the shape enclosing it (for tests). */
+  get head() {
+    return { id: this.headId, pivot: this.headPivot, bounds: HEADS[this.headId].bounds };
+  }
 
   /** Where he stands (feet), before any slide or jump. */
   setStance(x: number, z: number) {
@@ -465,7 +499,8 @@ export class Dave {
     this.apply();
 
     // Expression and colour
-    this.faceMat.map = this.faces[this.expression()];
+    const head = this.headGroups.get(this.headId)!;
+    head.faceMat.map = head.faces[this.expression()];
     const wantBlush = this.state === 'react' && this.reaction === 'gutter' ? 1 : 0;
     this.blush = smooth(this.blush, wantBlush, dt * 2);
     this.headMat.color.copy(this.headRed).lerp(this.headDark, this.blush);
@@ -579,7 +614,7 @@ export class Dave {
         break;
       case 'good':
         // One-armed fist pump
-        p.armR = limb(2.6, -0.45, 0.8 + 0.4 * pump);
+        p.armR = limb(2.6, -0.55, 0.8 + 0.4 * pump);
         p.armL = limb(0.2, -0.2, 0.3);
         p.drop = 0.04;
         break;
