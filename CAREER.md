@@ -114,7 +114,7 @@ interface CareerSave {
 
 Each step is playable on its own and can ship by itself:
 
-1. **AI bowler on the existing lane.** Rival data, the target-and-search AI, and noise from stats. Add one "vs CPU" quick match to the menu, using Dave's model with a different head. *This is the core risk, so it goes first.* Includes the simulation tuning harness.
+1. ✅ *Built:* **AI bowler on the existing lane.** Rival data, the target-and-search AI, and noise from stats. Add one "vs CPU" quick match to the menu, using Dave's model with a different head. *This is the core risk, so it goes first.* Includes the simulation tuning harness.
 2. **Rival heads.** Pickle, doughnut, sandwich and carrot first (the home ladder), then brie, aubergine, potato and pumpkin: head geometry, face textures and palettes, plus a few reaction lines each.
 3. **Ladder for stage 1.** Ladder screen, match intro and result cards, saving, stars. Three rivals plus Carrot Carl at Tomato Dave's.
 4. **Stages 2–4.** The remaining rivals and venue rules (latency, fresh oil, breeze, dry lanes), each tuned with the harness.
