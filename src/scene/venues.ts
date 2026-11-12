@@ -470,7 +470,7 @@ function rooftop(scores: THREE.Texture): Built {
     const h = 20 + rand() * 40;
     const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), towerMat);
     // Most tops sit below our roof, a few stand taller, so it feels high up
-    tower.position.set(Math.sin(a) * dist, h / 2 - 36, -Math.cos(a) * dist - 10);
+    tower.position.set(Math.sin(a) * dist, h / 2 - 44, -Math.cos(a) * dist - 10);
     g.add(tower);
   }
   // The setting sun
@@ -519,7 +519,7 @@ function rooftop(scores: THREE.Texture): Built {
     },
     apply: (scene, l) => {
       scene.background = sky;
-      scene.fog = new THREE.Fog('#d77a6a', 45, 190);
+      scene.fog = new THREE.Fog('#d77a6a', 30, 175);
       l.hemi.color.set('#ffc28a');
       l.hemi.groundColor.set('#40284a');
       l.hemi.intensity = 1.25;
