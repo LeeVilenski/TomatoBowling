@@ -80,7 +80,9 @@ function signage(g: THREE.Group, title: string, sub: string, tc: string, sc: str
   const sign = neonSign(title, sub, tc, sc);
   sign.position.set(0, 1.72, DECK_END_Z + 0.32);
   const panel = maskingPanel(lane, top, bottom, stripe, emblem);
-  panel.position.set(0, 0.95, DECK_END_Z + 0.445);
+  // Just in front of the alley's own masking unit (front face at +0.445), so its green
+  // stripe can't flicker through
+  panel.position.set(0, 0.95, DECK_END_Z + 0.46);
   g.add(maskingPart(sign), maskingPart(panel));
 }
 
@@ -425,8 +427,20 @@ function rooftop(scores: THREE.Texture): Built {
   deckTex.wrapS = deckTex.wrapT = THREE.RepeatWrapping;
   deckTex.repeat.set(4, 20);
   const deck = std('#ffffff', { map: deckTex });
-  for (const side of [-1, 1]) g.add(plane(4, ROOM_LEN + 6, deck, [side * (WALL_X + 1.3), 0.001, MID_Z], [-Math.PI / 2, 0, 0]));
-  g.add(plane(WALL_X * 2 + 6, FRONT_Z - 4.5 + 3, deck, [0, -0.004, (FRONT_Z + 4.5) / 2 + 1.5], [-Math.PI / 2, 0, 0]));
+  // Decking over the whole roof, out to the parapets, just under the lanes. It leaves a
+  // gap only for our own gutters and pit, which have their own floors.
+  const ROOF_HALF = WALL_X + 3.2;
+  const ROOF_FRONT = FRONT_Z + 3;
+  const ROOF_BACK = BACK_Z - 3;
+  const DECK_Y = -0.02;
+  const sideW = ROOF_HALF - (OUTER_HALF + 0.04);
+  for (const side of [-1, 1]) {
+    g.add(plane(sideW, ROOF_FRONT - ROOF_BACK, deck, [side * (ROOF_HALF - sideW / 2), DECK_Y, (ROOF_FRONT + ROOF_BACK) / 2], [-Math.PI / 2, 0, 0]));
+  }
+  const between = (z1: number, z2: number) =>
+    g.add(plane((OUTER_HALF + 0.04) * 2, z1 - z2, deck, [0, DECK_Y, (z1 + z2) / 2], [-Math.PI / 2, 0, 0]));
+  between(ROOF_FRONT, 4.5); // behind the bowler
+  between(PIT_END_Z - 0.1, ROOF_BACK); // behind the pit
 
   // No ceiling up here: the scoreboard hangs from a slim gantry across the lanes
   const steel = std('#3a2a33', { metalness: 0.6, roughness: 0.4 });
@@ -439,6 +453,7 @@ function rooftop(scores: THREE.Texture): Built {
   const concrete = std('#6e5a6a');
   for (const side of [-1, 1]) g.add(boxAt(0.25, 1, ROOM_LEN + 6, concrete, side * (WALL_X + 3.2), 0.5, MID_Z));
   g.add(boxAt(WALL_X * 2 + 6.6, 1, 0.25, concrete, 0, 0.5, FRONT_Z + 3));
+  g.add(boxAt(WALL_X * 2 + 6.6, 1, 0.25, concrete, 0, 0.5, BACK_Z - 3));
   const pot = std('#b5653a');
   const leaf = std('#3f8f3a');
   for (const [x, z] of [[-4.6, 7], [4.6, 7], [-4.6, 0], [4.6, 0], [-4.6, -8], [4.6, -8], [2, 10.6], [-2.5, 10.6]]) {
