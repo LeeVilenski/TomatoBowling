@@ -14,8 +14,12 @@ const arg = (name: string) => {
 };
 const GAMES = Number(arg('games') ?? 12);
 const ONLY = arg('rival');
-/** How far a rival's average may drift from its target before the check fails. */
-const TOLERANCE = Number(arg('tolerance') ?? 20);
+/**
+ * How far a rival's average may drift from its target before the check fails. A game swings
+ * by 25-30 pins, and runs differ from machine to machine, so a short run (CI plays 6 games)
+ * gets a wider band: ±20 at 12 games, ±28 at 6, never under ±20.
+ */
+const TOLERANCE = Number(arg('tolerance') ?? Math.max(20, Math.round(20 * Math.sqrt(12 / GAMES))));
 
 /** Small, seedable random numbers so runs are repeatable. */
 function seeded(seed: number) {

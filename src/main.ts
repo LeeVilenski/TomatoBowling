@@ -59,6 +59,11 @@ const FAST = 3; // fast forward speed
 // Where Dave stands relative to the ball: the ball sits in his right hand
 const DAVE_OFFSET_X = 0.3;
 const DAVE_Z = 0.62;
+// In a match against a rival, whoever isn't bowling waits here: beside the lane, up by the
+// foul line, far enough from the camera not to block the view
+const WAIT_X = -1.35;
+const WAIT_Z = 0.15;
+const WAIT_YAW = -0.5; // turned towards the lane, to watch
 const BALL_IN_HAND = new THREE.Vector3(0, -0.075, 0);
 
 const clamp = THREE.MathUtils.clamp;
@@ -114,6 +119,26 @@ async function start() {
   buildDecor(scene);
   const dave = new Dave();
   scene.add(dave.root);
+  // The computer rival, in its own body: it waits at the side while you bowl, and walks up
+  // for its turn (so the two of you swap places rather than one turning into the other)
+  const rivalFig = new Dave();
+  rivalFig.root.visible = false;
+  scene.add(rivalFig.root);
+  /** Whoever is bowling right now. */
+  let bowler: Dave = dave;
+  /** The other one, in a match against a rival (null otherwise). */
+  const watcher = () => (rivalFig.root.visible ? (bowler === dave ? rivalFig : dave) : null);
+  /** True while the two are swapping places; nobody bowls until it's done. */
+  let handover = false;
+  /** The bowlers swap places for the next turn: one walks off to wait, the other walks up. */
+  function handOver(to: Dave) {
+    if (to === bowler) return;
+    const from = bowler;
+    bowler = to;
+    handover = true;
+    from.walkTo(WAIT_X, WAIT_Z, { face: WAIT_YAW, then: 'wait' });
+    to.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', onArrive: () => (handover = false) });
+  }
 
   // ---- Unlockables: progress, and the ball and suit Dave is using ----
   let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
@@ -351,6 +376,8 @@ async function start() {
     const rivalBall = cpuTurn();
     speaker = rivalBall ? rival : null;
     daveComments = rivalBall ? !rushing && rivalPacer.shouldComment(reaction) : pacer.shouldComment(reaction);
+    // Whoever's waiting reacts to the ball from the side
+    watcher()?.watch(reaction);
     autoReplay = !rivalBall && reaction === 'strike' && lastReplay !== null;
     autoReplayAt = AUTO_REPLAY_AT;
     if (reaction === 'strike') {
@@ -416,7 +443,9 @@ async function start() {
       pendingAnim = null;
     }
     phase = 'sweeping';
-    dave.idle();
+    bowler.idle();
+    // Against a rival, swap places while the pinsetter works
+    if (rivalFig.root.visible && outcome?.playerChanged && !outcome.gameOver) handOver(bowler === dave ? rivalFig : dave);
     speech.hide();
     sound.pinsetter();
     physics.holdBall(aimX);
@@ -471,9 +500,18 @@ async function start() {
       if (careerLadder?.rule?.breeze) applyLane(laneFor(careerLadder, STANDARD_LANE));
     }
     if (mode === 'cpu' && rival) {
-      // The rival bowls in Dave's body, wearing its own head and suit
-      dave.setOutfit(cpuTurn() ? rival.outfit : equipped.suit);
-      dave.setHead(cpuTurn() ? rival.head : 'tomato');
+      // Whoever's turn it is should be on the approach (normally they walked up during the
+      // pinsetter's sweep; this covers starting or resuming a match)
+      if (!handover) {
+        const want = cpuTurn() ? rivalFig : dave;
+        if (want !== bowler) {
+          bowler.place(WAIT_X, WAIT_Z, WAIT_YAW);
+          bowler.wait();
+          bowler = want;
+          bowler.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
+          bowler.idle();
+        }
+      }
       if (!cpuTurn()) rushing = false;
       if (cpuTurn()) {
         cpuTimer = rushing ? 0.15 : CPU_THINK;
@@ -501,7 +539,7 @@ async function start() {
     phase = 'replay';
     replayT = 0;
     speech.hide();
-    dave.idle();
+    bowler.idle();
     juice.clear();
     replayBadge.hidden = false;
     document.body.classList.add('replaying');
@@ -561,9 +599,13 @@ async function start() {
       if (venues.current.id !== preferredVenue) selectVenue(preferredVenue, false);
       if (lane !== STANDARD_LANE) applyLane(STANDARD_LANE);
       scoreboard.showIdle();
-      // Dave hosts the menu as himself, even if a rival was mid-turn
+      // Dave hosts the menu on his own, back on the approach
       dave.setHead('tomato');
       dave.setOutfit(equipped.suit);
+      rivalFig.root.visible = false;
+      bowler = dave;
+      handover = false;
+      dave.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
       if (phase === 'replay') endReplay();
       dave.wave();
       speech.hide();
@@ -635,6 +677,17 @@ async function start() {
     pinsetter.cancel();
     setFastForward(false);
     phase = 'aiming';
+    // Who's on the lane: you, and in a match against a rival, them too (waiting their turn)
+    handover = false;
+    bowler = dave;
+    rivalFig.root.visible = mode === 'cpu' && rival !== null;
+    if (rivalFig.root.visible && rival) {
+      rivalFig.setHead(rival.head);
+      rivalFig.setOutfit(rival.outfit);
+      rivalFig.place(WAIT_X, WAIT_Z, WAIT_YAW);
+      rivalFig.wait();
+    }
+    dave.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
     dave.idle();
     speech.hide();
     renderScorecard(scorecardEl, match);
@@ -914,6 +967,10 @@ async function start() {
     dave.setHead('tomato');
     const won = mode === 'cpu' ? totals[0] > totals[1] : true;
     dave.react(!won ? 'meh' : top >= 150 ? 'strike' : top >= 90 ? 'good' : 'meh');
+    // The camera finds Dave, wherever he is, turned to face it; the rival has its own reaction
+    bowler = dave;
+    dave.faceTo(0);
+    if (rivalFig.root.visible) rivalFig.react(won ? 'meh' : 'strike');
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
     if (careerRung) {
       gameUnlocks.push(...fresh);
@@ -1032,7 +1089,7 @@ async function start() {
   }
 
   const controls: ControlTarget = {
-    canAim: () => openScreen === null && (phase === 'aiming' || phase === 'charging') && !cpuTurn(),
+    canAim: () => openScreen === null && (phase === 'aiming' || phase === 'charging') && !cpuTurn() && !handover,
     isCharging: () => phase === 'charging',
     moveBy(delta) {
       if (cpuTurn()) return; // the rival's turn
@@ -1072,12 +1129,12 @@ async function start() {
       showPower(power, false);
       const p = power;
       phase = 'swinging';
-      dave.swing(() => launch(p, aim, spin));
+      bowler.swing(() => launch(p, aim, spin));
     },
     cancelCharge() {
       if (phase !== 'charging') return;
       phase = 'aiming';
-      dave.idle();
+      bowler.idle();
       showPower(0, false);
       setStatus('Line up and throw!');
     },
@@ -1088,7 +1145,7 @@ async function start() {
       setTimeout(() => showPower(t.power, false), 700);
       aim = swipeDirectionToAim(t.direction);
       phase = 'swinging';
-      dave.swing(() => launch(t.power, aim, t.spin));
+      bowler.swing(() => launch(t.power, aim, t.spin));
     },
     swipePreview(direction) {
       if (openScreen === null && phase === 'aiming' && !cpuTurn()) aim = swipeDirectionToAim(direction);
@@ -1324,7 +1381,7 @@ async function start() {
       // The tomato rolls home along the return chute while the pinsetter works
       ballMesh.visible = chute.ballAt(pinsetter.elapsed, physics.ballRadius, ballMesh);
     } else if (held) {
-      dave.handWorldPosition(ballMesh.position).add(BALL_IN_HAND);
+      bowler.handWorldPosition(ballMesh.position).add(BALL_IN_HAND);
       ballMesh.quaternion.identity();
     } else {
       const p = physics.ball.translation();
@@ -1389,15 +1446,15 @@ async function start() {
   /** The computer rival's turn: size up the pins, step into place, then bowl. */
   function updateCpu(dt: number) {
     if (!rival || !match) return;
+    // The rival does its own bowling: if it isn't on the approach yet, it walks up first
+    if (bowler !== rivalFig && rivalFig.root.visible && !handover) handOver(rivalFig);
+    if (handover || bowler.walking) return;
     if (rushing) cpuTimer = Math.min(cpuTimer, 0.15);
     cpuTimer -= dt;
     if (cpuTimer > 0) return;
     if (!cpuThrow) {
       const tracer = ensurePredictor();
       if (!tracer) return; // still loading; try again next frame
-      // Whoever's on the approach now, it's the rival who bowls
-      dave.setHead(rival.head);
-      dave.setOutfit(rival.outfit);
       const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
       const target = chooseTarget(standing, rival);
       const [you, them] = match.totals();
@@ -1405,13 +1462,15 @@ async function start() {
       cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you, match.frames), undefined, !target.fullRack);
       aimX = cpuThrow.x;
       physics.holdBall(aimX);
-      cpuTimer = CPU_LINE_UP;
+      // Step across to the chosen spot, then a moment to line up
+      bowler.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle' });
+      cpuTimer = rushing ? 0.1 : CPU_LINE_UP;
       return;
     }
     const t = cpuThrow;
     cpuThrow = null;
     phase = 'swinging';
-    dave.swing(() => launch(0, t.angle / MAX_ANGLE, t.spin ?? 0, t.speed));
+    bowler.swing(() => launch(0, t.angle / MAX_ANGLE, t.spin ?? 0, t.speed));
   }
 
   function updatePhase(dt: number) {
@@ -1422,11 +1481,13 @@ async function start() {
       const held = (performance.now() - chargeStart) / 1000;
       power = 0.5 - 0.5 * Math.cos((Math.PI * held) / CHARGE_HALF_CYCLE);
       showPower(power, true);
-      dave.charge(power);
+      bowler.charge(power);
     } else if (phase === 'rolling') {
       const b = physics.ball.translation();
       const v = physics.ball.linvel();
       const stalled = Math.hypot(v.x, v.z) < 0.2;
+      // The bowler leans after the ball, willing it on
+      bowler.setEnglish(b.x / 0.45);
       if (b.z < HEAD_PIN_Z + 0.5 || b.y < -0.2 || stalled) {
         phase = 'settling';
         settleTime = 0;
@@ -1450,7 +1511,7 @@ async function start() {
       }
       if (resultTime >= REACTION_AT && !reactionShown) {
         reactionShown = true;
-        dave.react(reaction);
+        bowler.react(reaction);
         speech.show(
           speaker
             ? pickLine(reaction, Math.random, speaker.lines, speaker.id)
@@ -1486,9 +1547,10 @@ async function start() {
     ffBtn.hidden = !(openScreen === null && (phase === 'rolling' || phase === 'settling'));
     replayBtn.hidden = !(openScreen === null && phase === 'result' && lastReplay !== null);
     skipBtn.hidden = !(openScreen === null && cpuTurn() && !rushing);
-    if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') dave.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
+    if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') bowler.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
     // Dave keeps moving in the menus (he waves), but freezes mid-move on the pause screen
     dave.update(openScreen === 'pause' ? 0 : dt);
+    if (rivalFig.root.visible) rivalFig.update(openScreen === 'pause' ? 0 : dt);
     releaseBlend = Math.max(0, releaseBlend - gameDt / 0.15);
     syncMeshes();
     if (!frozen) updateJuice();
@@ -1503,10 +1565,10 @@ async function start() {
     }
     updateAimLine();
     const b = phase === 'replay' ? ballMesh.position : physics.ball.translation();
-    rig.update(dt, { shot: currentShot(), standX: aimX - DAVE_OFFSET_X, aimX, daveZ: DAVE_Z, dave: dave.root.position, ball: b });
+    rig.update(dt, { shot: currentShot(), standX: aimX - DAVE_OFFSET_X, aimX, daveZ: DAVE_Z, dave: bowler.root.position, ball: b });
     input.update(dt);
     renderer.render(scene, camera);
-    speech.update(dave, camera);
+    speech.update(bowler, camera);
     requestAnimationFrame(frame);
   }
 

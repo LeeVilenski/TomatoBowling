@@ -65,6 +65,37 @@ describe.each(heads)("hands stay out of the %s head", (head) => {
     expect(await clearance(head, (d) => d.wave())).toBeGreaterThan(MIN_GAP);
   });
 
+  it('walking', async () => {
+    expect(await clearance(head, (d) => d.walkTo(0, -5))).toBeGreaterThan(MIN_GAP);
+  });
+
+  it('fidgeting while waiting for a turn', async () => {
+    // Long enough to go through every fidget
+    expect(await clearance(head, (d) => d.wait(), 20)).toBeGreaterThan(MIN_GAP);
+  });
+
+  for (const kind of ['strike', 'gutter', 'split', 'meh'] as const) {
+    it(`watching the other bowler's ${kind}`, async () => {
+      expect(
+        await clearance(head, (d) => {
+          d.wait();
+          d.watch(kind);
+        }),
+      ).toBeGreaterThan(MIN_GAP);
+    });
+  }
+
+  for (const lean of [-1, 1]) {
+    it(`leaning after the ball (${lean < 0 ? 'left' : 'right'})`, async () => {
+      expect(
+        await clearance(head, (d) => {
+          d.swing(() => {});
+          d.setEnglish(lean);
+        }),
+      ).toBeGreaterThan(MIN_GAP);
+    });
+  }
+
   it('charging and throwing', async () => {
     expect(
       await clearance(head, (d) => {
