@@ -85,6 +85,30 @@ describe.each(heads)("hands stay out of the %s head", (head) => {
     });
   }
 
+  it('sitting on the bench, fidgeting', async () => {
+    expect(await clearance(head, (d) => d.sitAt(0, 0), 20)).toBeGreaterThan(MIN_GAP);
+  });
+
+  for (const kind of ['strike', 'gutter', 'split'] as const) {
+    it(`watching a ${kind} from the bench`, async () => {
+      expect(
+        await clearance(head, (d) => {
+          d.sitAt(0, 0);
+          d.watch(kind);
+        }),
+      ).toBeGreaterThan(MIN_GAP);
+    });
+  }
+
+  it('getting up off the bench and walking', async () => {
+    expect(
+      await clearance(head, (d) => {
+        d.sitAt(0, 0);
+        d.walkTo(0, -5);
+      }),
+    ).toBeGreaterThan(MIN_GAP);
+  });
+
   for (const lean of [-1, 1]) {
     it(`leaning after the ball (${lean < 0 ? 'left' : 'right'})`, async () => {
       expect(

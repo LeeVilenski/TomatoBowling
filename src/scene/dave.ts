@@ -36,6 +36,9 @@ const FIDGETS = ['sway', 'arms', 'tap', 'look', 'hips'] as const;
 type Fidget = (typeof FIDGETS)[number];
 
 const WALK_SPEED = 1.3; // m/s
+const RISE_TIME = 0.45; // getting up off the bench, seconds
+/** How far the hips come down to sit on a seat about 44 cm high. */
+const SIT_DROP = 0.425;
 /** How far an arm turns in to fold across the chest or clap. */
 const ROLL_IN = 0.9;
 const TURN_RATE = 7; // how quickly he turns to face a new direction
@@ -229,7 +232,11 @@ export class Dave {
   private yaw = 0;
   private wantYaw = 0;
   /** Where he's walking to, what to do when he gets there, and which way to face. */
-  private walk: { x: number; z: number; then: 'idle' | 'wait'; face: number; onArrive?: () => void } | null = null;
+  private walk: { x: number; z: number; then: 'idle' | 'wait' | 'sit'; face: number; speed: number; onArrive?: () => void } | null = null;
+  /** Sitting down (on the bench behind the approach) while waiting for a turn. */
+  private seated = false;
+  /** Seconds left getting up off the bench before a walk sets off. */
+  private rising = 0;
   private stride = 0;
   private fidget: Fidget = 'sway';
   private fidgetTime = 0;
@@ -481,28 +488,55 @@ export class Dave {
 
   /** Where he stands (feet), before any slide or jump. Ignored while he's walking somewhere. */
   setStance(x: number, z: number) {
-    if (this.state === 'walk') return;
+    if (this.state === 'walk' || this.seated) return;
     this.base.set(x, 0, z);
   }
 
   /** Put him somewhere straight away, facing `yaw` (0 = down the lane). */
   place(x: number, z: number, yaw = 0) {
     this.walk = null;
+    this.seated = false;
+    this.rising = 0;
     this.base.set(x, 0, z);
     this.yaw = this.wantYaw = yaw;
     if (this.state === 'walk') this.setState('idle');
   }
 
+  /** Put him straight on a seat at (x, z), facing the lanes, waiting his turn. */
+  sitAt(x: number, z: number) {
+    this.place(x, z, 0);
+    this.seated = true;
+    this.wait();
+  }
+
+  get sitting() {
+    return this.seated;
+  }
+
   /**
-   * Walk to (x, z), then turn to face `face` and either get ready to bowl ('idle') or
-   * wait for a turn ('wait'). `onArrive` fires when he's there.
+   * Walk to (x, z), then turn to face `face` and either get ready to bowl ('idle'), wait
+   * for a turn standing ('wait') or sit down there to wait ('sit'). If he's sitting, he
+   * gets up first. `onArrive` fires when he's there.
    */
-  walkTo(x: number, z: number, opts: { face?: number; then?: 'idle' | 'wait'; onArrive?: () => void } = {}) {
-    this.walk = { x, z, then: opts.then ?? 'idle', face: opts.face ?? 0, onArrive: opts.onArrive };
+  walkTo(
+    x: number,
+    z: number,
+    opts: { face?: number; then?: 'idle' | 'wait' | 'sit'; speed?: number; onArrive?: () => void } = {},
+  ) {
+    this.walk = { x, z, then: opts.then ?? 'idle', face: opts.face ?? 0, speed: opts.speed ?? WALK_SPEED, onArrive: opts.onArrive };
+    if (this.seated) this.rising = RISE_TIME;
+    this.seated = false;
     this.setState('walk');
   }
 
-  /** Turn on the spot to face `yaw` (0 = down the lane). */
+  /** Speed up a walk under way (and any getting up first), to at least `speed` m/s. */
+  hurry(speed: number) {
+    if (!this.walk) return;
+    this.walk.speed = Math.max(this.walk.speed, speed);
+    this.rising = Math.min(this.rising, 0.15);
+  }
+
+    /** Turn on the spot to face `yaw` (0 = down the lane). */
   faceTo(yaw: number) {
     this.wantYaw = yaw;
   }
@@ -530,10 +564,12 @@ export class Dave {
   }
 
   idle() {
+    this.seated = false;
     this.setState('idle');
   }
 
   wave() {
+    this.seated = false;
     this.setState('wave');
   }
 
@@ -552,6 +588,7 @@ export class Dave {
   }
 
   react(kind: ReactionKind) {
+    this.seated = false;
     this.reaction = kind;
     this.setState('react');
   }
@@ -620,16 +657,22 @@ export class Dave {
   private stepWalk(dt: number) {
     const w = this.walk;
     if (this.state !== 'walk' || !w) return;
+    // Getting up off the bench before setting off
+    if (this.rising > 0) {
+      this.rising -= dt;
+      return;
+    }
     const dx = w.x - this.base.x;
     const dz = w.z - this.base.z;
     const dist = Math.hypot(dx, dz);
-    const step = WALK_SPEED * dt;
+    const step = w.speed * dt;
     if (dist <= step) {
       this.base.set(w.x, 0, w.z);
       this.wantYaw = w.face;
       this.walk = null;
-      if (w.then === 'wait') this.wait();
+      if (w.then === 'wait' || w.then === 'sit') this.wait();
       else this.setState('idle');
+      this.seated = w.then === 'sit';
       w.onArrive?.();
       return;
     }
@@ -734,9 +777,11 @@ export class Dave {
       }
       case 'wait':
         this.waitPose(p, t);
+        if (this.seated) this.sitPose(p, t);
         break;
       case 'watch':
         this.watchPose(p, t);
+        if (this.seated) this.sitPose(p, t);
         break;
       case 'wave': {
         p.armR = limb(0.2, 2.5, 0.6 + 0.45 * Math.sin(t * 9));
@@ -844,6 +889,38 @@ export class Dave {
         p.lean = -0.04 + 0.04 * Math.sin(t * 2.2);
         break;
     }
+  }
+
+  /**
+   * Turns a waiting or watching pose into a seated one: hips down on the seat, thighs level
+   * and shins upright, hands resting on his knees unless they're busy. Waits until he's
+   * turned round to face the lanes, so he doesn't sit down sideways.
+   */
+  private sitPose(p: Pose, t: number) {
+    let turn = this.wantYaw - this.yaw;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    if (Math.abs(turn) > 0.35) return;
+    p.drop = SIT_DROP;
+    p.jump = 0;
+    p.slide = 0;
+    // Sitting back, or leaning forward on his knees
+    p.lean = this.state === 'wait' && this.fidget === 'hips' ? 0.22 + 0.03 * Math.sin(t * 1.5) : Math.min(p.lean, 0.1) - 0.06;
+    // The hips are fully lowered, which bends the knees by itself (see apply): these put the
+    // thighs level and the shins straight down
+    const thigh = 1.07;
+    const shin = -0.67;
+    p.legL = limb(thigh, 0.08, shin);
+    p.legR = limb(thigh, 0.08, shin);
+    if (this.state === 'wait' && this.fidget === 'tap') p.legR = limb(thigh, 0.08, shin + 0.15 * Math.max(0, Math.sin(t * 7)));
+    if (this.state === 'wait' && this.fidget === 'sway') {
+      // Swinging his feet a little
+      p.legL.bend += 0.1 * Math.sin(t * 1.8);
+      p.legR.bend -= 0.1 * Math.sin(t * 1.8);
+    }
+    // Hands that were hanging down (or on his hips, or in his pockets) rest on his knees
+    const resting = (a: Limb) => a.fwd < 0.3 || a.out > 0.5;
+    if (resting(p.armR)) p.armR = limb(0.55, 0.05, 0.6);
+    if (resting(p.armL)) p.armL = limb(0.55, 0.05, 0.6);
   }
 
   /** Reacting from the side to the other bowler's ball. */
