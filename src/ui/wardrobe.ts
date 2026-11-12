@@ -16,7 +16,8 @@ const SWATCHES: Record<string, string> = {
   navy: '#1f2a4d',
   tuxedo: 'linear-gradient(90deg, #121216 40%, #fff 40% 60%, #121216 60%)',
   pinstripe: 'repeating-linear-gradient(90deg, #3a3d48 0 5px, #c9c9d4 5px 6px)',
-  tracksuit: 'linear-gradient(90deg, #2f8f2a 30%, #fff 30% 38%, #2f8f2a 38% 62%, #fff 62% 70%, #2f8f2a 70%)',
+  tracksuit:
+    'linear-gradient(#f3ecd8 0 32%, #d6281c 32% 38%, transparent 38%), linear-gradient(90deg, #1d6b34 22%, #f3ecd8 22% 28%, #d6281c 28% 32%, #f3ecd8 32% 38%, #1d6b34 38% 62%, #f3ecd8 62% 68%, #d6281c 68% 72%, #f3ecd8 72% 78%, #1d6b34 78%)',
 };
 
 export function renderWardrobe(progress: Progress, equipped: Equipped, equip: (e: Equipped) => void) {

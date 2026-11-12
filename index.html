@@ -168,12 +168,8 @@
         <h2 id="go-title">Game over</h2>
         <div id="go-body"></div>
         <form id="submit-form" hidden>
-          <p class="small">Add your score to the online leaderboard</p>
-          <div class="player-input">
-            <input id="lb-name" maxlength="12" autocomplete="nickname" placeholder="Your name" aria-label="Your name" />
-            <button type="submit" id="lb-submit" class="primary">Submit</button>
-          </div>
-          <p id="lb-msg" class="small" aria-live="polite"></p>
+          <p id="lb-prompt" class="small">Add your score to the online leaderboard</p>
+          <div id="lb-entries"></div>
           <button type="button" id="lb-view" class="ghost" hidden>🏆 View leaderboard</button>
         </form>
         <div class="buttons">

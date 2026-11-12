@@ -72,40 +72,80 @@ interface Outfit {
   shoes: string;
 }
 
+/** Tracksuit colours: tomato-leaf green with cream and tomato-red trim. */
+const TRACK = { green: '#1d6b34', dark: '#134a24', cream: '#f3ecd8', red: '#d6281c' };
+
 export const OUTFITS: Record<string, Outfit> = {
   navy: { suit: DAVE_COLOURS.suit, tie: DAVE_COLOURS.tie, shirt: true, shoes: DAVE_COLOURS.shoe },
   tuxedo: { suit: '#121216', bowTie: true, shirt: true, shoes: '#0a0a0a' },
   pinstripe: { suit: '#3a3d48', pattern: 'pinstripe', tie: '#e0b02e', shirt: true, shoes: '#5a2e14' },
-  tracksuit: { suit: '#2f8f2a', pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
+  tracksuit: { suit: TRACK.green, pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
 };
 
+type Fabric = 'limb' | 'body';
 const patterns = new Map<string, THREE.CanvasTexture>();
-/** Fabric textures that wrap around the arms, legs and body. */
-function patternTexture(kind: 'pinstripe' | 'tracksuit') {
-  const cached = patterns.get(kind);
+/**
+ * Fabric textures. Cylinders wrap u around from the back (u 0) through Dave's right (0.25),
+ * front (0.5) and left (0.75); the top of the canvas is the top of the part.
+ * Limbs are turned so that u 0.25 always faces outwards.
+ */
+function patternTexture(kind: 'pinstripe' | 'tracksuit', fabric: Fabric) {
+  const key = kind === 'pinstripe' ? kind : `${kind}-${fabric}`;
+  const cached = patterns.get(key);
   if (cached) return cached;
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 32;
   const g = c.getContext('2d')!;
   if (kind === 'pinstripe') {
+    c.width = 256;
+    c.height = 32;
     g.fillStyle = '#3a3d48';
     g.fillRect(0, 0, 256, 32);
     g.fillStyle = 'rgba(235, 235, 245, 0.75)';
     for (let x = 0; x < 256; x += 14) g.fillRect(x, 0, 1.5, 32);
+  } else if (fabric === 'limb') {
+    // Plain green with a cream-red-cream racing stripe down the outside
+    c.width = 256;
+    c.height = 64;
+    g.fillStyle = TRACK.green;
+    g.fillRect(0, 0, 256, 64);
+    const x = 64;
+    g.fillStyle = TRACK.cream;
+    g.fillRect(x - 11, 0, 22, 64);
+    g.fillStyle = TRACK.red;
+    g.fillRect(x - 3.5, 0, 7, 64);
   } else {
-    // Tomato-green tracksuit with white stripes down each side
-    g.fillStyle = '#2f8f2a';
-    g.fillRect(0, 0, 256, 32);
-    g.fillStyle = '#ffffff';
+    // Jacket: cream shoulder yoke with a red piping line, a zip down the front,
+    // stripes down each side and a ribbed hem.
+    c.width = 512;
+    c.height = 256;
+    g.fillStyle = TRACK.green;
+    g.fillRect(0, 0, 512, 256);
+    const yoke = 70;
+    g.fillStyle = TRACK.cream;
+    g.fillRect(0, 0, 512, yoke);
+    g.fillStyle = TRACK.red;
+    g.fillRect(0, yoke, 512, 7);
+    const hem = 236;
     for (const u of [0.25, 0.75]) {
-      g.fillRect(u * 256 - 10, 0, 6, 32);
-      g.fillRect(u * 256 + 4, 0, 6, 32);
+      g.fillStyle = TRACK.cream;
+      g.fillRect(u * 512 - 15, yoke + 7, 30, hem - yoke - 7);
+      g.fillStyle = TRACK.red;
+      g.fillRect(u * 512 - 5, yoke + 7, 10, hem - yoke - 7);
     }
+    g.fillStyle = TRACK.dark;
+    g.fillRect(0, hem, 512, 256 - hem);
+    g.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    for (let x = 0; x < 512; x += 6) g.fillRect(x, hem, 2, 256 - hem);
+    // Zip: a dark tape with silver teeth
+    g.fillStyle = TRACK.dark;
+    g.fillRect(256 - 5, 0, 10, 256);
+    g.fillStyle = '#c9ccd2';
+    for (let y = 0; y < 256; y += 5) g.fillRect(256 - 2, y, 4, 2.5);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  patterns.set(kind, tex);
+  tex.anisotropy = 4;
+  patterns.set(key, tex);
   return tex;
 }
 
@@ -124,6 +164,13 @@ export class Dave {
   private headMat: THREE.MeshStandardMaterial;
   private faces = createFaceTextures();
   private suitMat!: THREE.MeshStandardMaterial;
+  /** Arms and legs, and the jacket: these take the outfit's fabric texture. */
+  private limbMat!: THREE.MeshStandardMaterial;
+  private jacketMat!: THREE.MeshStandardMaterial;
+  private shoulderMat!: THREE.MeshStandardMaterial;
+  private cuffMat!: THREE.MeshStandardMaterial;
+  /** Collar, ankle bands and zip pull, shown with the tracksuit. */
+  private trackBits: THREE.Object3D[] = [];
   private shoeMat!: THREE.MeshStandardMaterial;
   private tieMat!: THREE.MeshStandardMaterial;
   private shirtFront!: THREE.Mesh;
@@ -149,10 +196,22 @@ export class Dave {
       new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...extra });
     const suit = flat(suitColour);
     this.suitMat = suit;
+    const limb = flat(suitColour);
+    this.limbMat = limb;
+    this.jacketMat = flat(suitColour);
+    this.shoulderMat = flat(suitColour);
     const shoeMat = flat(DAVE_COLOURS.shoe, { roughness: 0.3 });
     this.shoeMat = shoeMat;
     const skin = flat(DAVE_COLOURS.skin);
     const shirt = flat(DAVE_COLOURS.shirt);
+    this.cuffMat = flat(DAVE_COLOURS.shirt);
+    const rib = flat(TRACK.dark, { roughness: 0.9 });
+    // Turns a limb part so its texture's u 0.25 faces outwards (see patternTexture).
+    const outward = (m: THREE.Mesh, side: 1 | -1) => {
+      const sphere = m.geometry instanceof THREE.SphereGeometry;
+      m.rotation.y = sphere ? (side * Math.PI) / 2 : side === 1 ? 0 : Math.PI;
+      return m;
+    };
     const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, y = 0, x = 0, z = 0) => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
@@ -166,16 +225,20 @@ export class Dave {
     const makeLeg = (side: 1 | -1) => {
       const hip = new THREE.Group();
       hip.position.set(0.1 * side, 0, 0);
-      hip.add(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.46, 18), suit, -0.23));
+      hip.add(outward(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.46, 24), limb, -0.23), side));
       const knee = new THREE.Group();
       knee.position.y = -0.46;
-      knee.add(mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.44, 18), suit, -0.22));
+      knee.add(outward(mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.44, 24), limb, -0.22), side));
+      // Ribbed ankle band (tracksuit only)
+      const ankle = mesh(new THREE.CylinderGeometry(0.069, 0.069, 0.05, 20), rib, -0.415);
+      this.trackBits.push(ankle);
+      knee.add(ankle);
       const shoe = mesh(new THREE.CapsuleGeometry(0.055, 0.17, 6, 14), shoeMat, -0.465, 0, -0.05);
       shoe.rotation.x = Math.PI / 2;
       shoe.scale.set(1.05, 1, 0.65);
       knee.add(shoe);
       // Rounded knee so the leg doesn't show a seam when it bends
-      knee.add(mesh(new THREE.SphereGeometry(0.074, 18, 14), suit, 0));
+      knee.add(outward(mesh(new THREE.SphereGeometry(0.074, 24, 14), limb, 0), side));
       hip.add(knee);
       this.hips.add(hip);
       return { hip, knee };
@@ -188,7 +251,10 @@ export class Dave {
 
     // Torso: jacket, shirt, tie, buttons
     this.hips.add(this.spine);
-    const jacket = mesh(new THREE.CylinderGeometry(0.22, 0.19, 0.6, 20), suit, 0.3);
+    // Its caps take the plain shoulder fabric: a wrapped texture smears across them.
+    const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.19, 0.6, 32), [this.jacketMat, this.shoulderMat, this.shoulderMat]);
+    jacket.position.y = 0.3;
+    jacket.castShadow = true;
     jacket.scale.z = 0.72;
     this.spine.add(jacket);
     const vShape = new THREE.Shape();
@@ -218,19 +284,28 @@ export class Dave {
     for (const y of [0.24, 0.13]) this.buttons.add(mesh(new THREE.SphereGeometry(0.014, 10, 8), flat('#d9c27a'), y, 0, -0.14));
     this.spine.add(this.buttons);
     // Shoulders
-    for (const side of [1, -1]) this.spine.add(mesh(new THREE.SphereGeometry(0.075, 18, 14), suit, 0.55, 0.2 * side));
+    for (const side of [1, -1]) this.spine.add(mesh(new THREE.SphereGeometry(0.075, 18, 14), this.shoulderMat, 0.55, 0.2 * side));
+    // Tracksuit: stand-up collar and a zip pull
+    const collarMat = flat(TRACK.cream, { roughness: 0.8 });
+    const collar = mesh(new THREE.CylinderGeometry(0.085, 0.11, 0.06, 24, 1, true), collarMat, 0.62);
+    collar.scale.z = 0.85;
+    (collar.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    const zipPull = mesh(new THREE.BoxGeometry(0.02, 0.035, 0.008), flat('#c9ccd2', { metalness: 0.6, roughness: 0.3 }), 0.56, 0, -0.16);
+    this.trackBits.push(collar, zipPull);
+    this.spine.add(collar, zipPull);
+    for (const part of this.trackBits) part.visible = false;
 
     // Arms: upper arm, elbow, forearm, cuff, hand
     const makeArm = (side: 1 | -1) => {
       const shoulder = new THREE.Group();
       shoulder.position.set(0.25 * side, 0.55, 0);
       shoulder.rotation.order = 'ZXY';
-      shoulder.add(mesh(new THREE.CylinderGeometry(0.066, 0.06, 0.3, 18), suit, -0.15));
+      shoulder.add(outward(mesh(new THREE.CylinderGeometry(0.066, 0.06, 0.3, 24), limb, -0.15), side));
       const elbow = new THREE.Group();
       elbow.position.y = -0.3;
-      elbow.add(mesh(new THREE.SphereGeometry(0.062, 16, 12), suit, 0));
-      elbow.add(mesh(new THREE.CylinderGeometry(0.058, 0.052, 0.26, 18), suit, -0.13));
-      elbow.add(mesh(new THREE.CylinderGeometry(0.054, 0.054, 0.035, 20), shirt, -0.265));
+      elbow.add(outward(mesh(new THREE.SphereGeometry(0.062, 24, 12), limb, 0), side));
+      elbow.add(outward(mesh(new THREE.CylinderGeometry(0.058, 0.052, 0.26, 24), limb, -0.13), side));
+      elbow.add(mesh(new THREE.CylinderGeometry(0.054, 0.054, 0.035, 20), this.cuffMat, -0.265));
       elbow.add(mesh(new THREE.SphereGeometry(0.055, 18, 14), skin, -0.32));
       shoulder.add(elbow);
       this.spine.add(shoulder);
@@ -296,9 +371,23 @@ export class Dave {
   /** Changes Dave's outfit: 'navy', 'tuxedo', 'pinstripe' or 'tracksuit'. */
   setOutfit(id: string) {
     const o = OUTFITS[id] ?? OUTFITS.navy;
-    this.suitMat.map = o.pattern ? patternTexture(o.pattern) : null;
-    this.suitMat.color.set(o.pattern ? '#ffffff' : o.suit);
-    this.suitMat.needsUpdate = true;
+    const track = o.pattern === 'tracksuit';
+    // Pinstripe covers everything; the tracksuit's trim goes on the limbs and jacket only.
+    const fabric: [THREE.MeshStandardMaterial, THREE.CanvasTexture | null][] = [
+      [this.suitMat, o.pattern === 'pinstripe' ? patternTexture('pinstripe', 'body') : null],
+      [this.shoulderMat, o.pattern === 'pinstripe' ? patternTexture('pinstripe', 'body') : null],
+      [this.limbMat, o.pattern ? patternTexture(o.pattern, 'limb') : null],
+      [this.jacketMat, o.pattern ? patternTexture(o.pattern, 'body') : null],
+    ];
+    for (const [mat, map] of fabric) {
+      mat.map = map;
+      mat.color.set(map ? '#ffffff' : o.suit);
+      mat.roughness = track ? 0.55 : 0.7;
+      mat.needsUpdate = true;
+    }
+    if (track) this.shoulderMat.color.set(TRACK.cream);
+    this.cuffMat.color.set(track ? TRACK.dark : DAVE_COLOURS.shirt);
+    for (const part of this.trackBits) part.visible = track;
     this.tie.visible = !!o.tie;
     if (o.tie) this.tieMat.color.set(o.tie);
     this.bowTie.visible = !!o.bowTie;
