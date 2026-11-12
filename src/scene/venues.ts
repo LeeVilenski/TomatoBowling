@@ -416,6 +416,122 @@ function disco(scores: THREE.Texture): Built {
 }
 
 // ---------------------------------------------------------------- Rooftop at Sunset
+
+/**
+ * Scales a box's texture coordinates to its real size, so a tiling texture keeps the same
+ * scale on every face (tw × th metres per tile) instead of stretching to fit.
+ */
+function tileBoxUVs(geo: THREE.BoxGeometry, w: number, h: number, d: number, tw: number, th: number, offU = 0, offV = 0) {
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  // Face order is +x, -x, +y, -y, +z, -z, four corners each
+  const span = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let i = 0; i < uv.count; i++) {
+    const [su, sv] = span[Math.floor(i / 4)];
+    uv.setXY(i, (uv.getX(i) * su) / tw + offU, (uv.getY(i) * sv) / th + offV);
+  }
+  return geo;
+}
+
+function tiledBox(w: number, h: number, d: number, mat: THREE.Material | THREE.Material[], x: number, y: number, z: number, tw: number, th: number) {
+  const m = new THREE.Mesh(tileBoxUVs(new THREE.BoxGeometry(w, h, d), w, h, d, tw, th), mat);
+  m.position.set(x, y, z);
+  m.receiveShadow = true;
+  return m;
+}
+
+/** Brick wall texture; one tile is 4 bricks across and 8 courses up (0.92 m × 0.6 m). */
+function brickTexture(base: [number, number, number], mortar: string) {
+  const rand = seeded(5);
+  const tex = canvasTexture(256, 256, (c) => {
+    c.fillStyle = mortar;
+    c.fillRect(0, 0, 256, 256);
+    for (let row = 0; row < 8; row++) {
+      const shift = row % 2 ? 32 : 0;
+      for (let k = -1; k < 4; k++) {
+        const [h, s, l] = base;
+        c.fillStyle = `hsl(${h + (rand() - 0.5) * 8}, ${s}%, ${l + (rand() - 0.5) * 9}%)`;
+        c.fillRect(k * 64 + shift + 2, row * 32 + 2, 60, 28);
+      }
+    }
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function seeded(seed: number) {
+  let s = seed;
+  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+}
+
+interface Facade {
+  /** Wall colour and the colours of unlit glass */
+  wall: string;
+  glass: string[];
+  /** Window size within each 2 m bay × 3.5 m floor, in pixels of a 32 × 32 cell */
+  winW: number;
+  winH: number;
+  /** Horizontal band (spandrel) colour drawn between floors, if any */
+  band?: string;
+}
+
+const FACADES: Facade[] = [
+  // Glass office tower: big windows, thin mullions, catching the sunset
+  { wall: '#3b4256', glass: ['#6a5a86', '#8a6a8e', '#c98a7e', '#4f5878'], winW: 28, winH: 24, band: '#2c3242' },
+  // Old brick block: small punched windows
+  { wall: '#7a4636', glass: ['#3a2c3a', '#4a3848', '#6e5068'], winW: 12, winH: 18 },
+  // Pale concrete apartments with deep floor bands
+  { wall: '#b49c8e', glass: ['#4e4258', '#665470', '#8f6f80'], winW: 20, winH: 16, band: '#8e786e' },
+  // Dark stone
+  { wall: '#4e3c44', glass: ['#2e2434', '#5a4660', '#7a5a70'], winW: 16, winH: 20 },
+];
+
+const BAY = 2; // metres per window bay
+const FLOOR = 3.5; // metres per storey
+const TILE_BAYS = 8;
+const TILE_FLOORS = 8;
+
+/**
+ * A facade texture (8 bays × 8 floors per tile), plus a matching glow map with only the
+ * lit windows in it, so the walls take the sunset light and only the windows shine.
+ */
+function facadeTextures(f: Facade, seed: number) {
+  const rand = seeded(seed);
+  const lit: boolean[] = [];
+  const shades: string[] = [];
+  for (let i = 0; i < TILE_BAYS * TILE_FLOORS; i++) {
+    lit.push(rand() < 0.28);
+    shades.push(f.glass[Math.floor(rand() * f.glass.length)]);
+  }
+  const cell = 32;
+  const draw = (glow: boolean) => (c: CanvasRenderingContext2D) => {
+    c.fillStyle = glow ? '#000000' : f.wall;
+    c.fillRect(0, 0, 256, 256);
+    for (let fl = 0; fl < TILE_FLOORS; fl++) {
+      if (!glow && f.band) {
+        c.fillStyle = f.band;
+        c.fillRect(0, fl * cell + cell - 5, 256, 5);
+      }
+      for (let b = 0; b < TILE_BAYS; b++) {
+        const i = fl * TILE_BAYS + b;
+        const x = b * cell + (cell - f.winW) / 2;
+        const y = fl * cell + (cell - 5 - f.winH) / 2;
+        if (glow) {
+          if (!lit[i]) continue;
+          c.fillStyle = rand() < 0.2 ? '#cfe4ff' : '#ffc777';
+        } else {
+          c.fillStyle = lit[i] ? '#ffd79a' : shades[i];
+        }
+        c.fillRect(x, y, f.winW, f.winH);
+      }
+    }
+  };
+  const map = canvasTexture(256, 256, draw(false));
+  const glowMap = canvasTexture(256, 256, draw(true));
+  for (const t of [map, glowMap]) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return { map, glowMap };
+}
+
 function rooftop(scores: THREE.Texture): Built {
   const g = new THREE.Group();
   const deckTex = canvasTexture(256, 64, (c) => {
@@ -427,33 +543,107 @@ function rooftop(scores: THREE.Texture): Built {
   deckTex.wrapS = deckTex.wrapT = THREE.RepeatWrapping;
   deckTex.repeat.set(4, 20);
   const deck = std('#ffffff', { map: deckTex });
-  // Decking over the whole roof, out to the parapets, just under the lanes. It leaves a
-  // gap only for our own gutters and pit, which have their own floors.
+  const dark = std('#120c14', { roughness: 1 });
+  const steel = std('#3a2a33', { metalness: 0.6, roughness: 0.4 });
+
+  // The lanes run into a small brick pinsetter house at the far end of the roof. Its front
+  // wall carries the sign and the masking units; inside it is dark, like any pit area.
   const ROOF_HALF = WALL_X + 3.2;
   const ROOF_FRONT = FRONT_Z + 3;
   const ROOF_BACK = BACK_Z - 3;
   const DECK_Y = -0.02;
-  const sideW = ROOF_HALF - (OUTER_HALF + 0.04);
+  const HOUSE_HALF = WALL_X + 0.1;
+  const HOUSE_FRONT = DECK_END_Z + 0.3; // just behind the sign
+  const HOUSE_TOP = 3.6;
+  const MASK_TOP = 0.95 + 0.55 / 2;
+  const MASK_EDGE = NEIGHBOUR_X + OUTER_HALF + 0.15; // outer end of the neighbours' masking units
+
+  // Decking over the open roof, out to the parapets, just under the lanes. It leaves a gap
+  // only for our own gutters and pit, which have their own floors.
+  const inner = OUTER_HALF + 0.04;
+  const strip = (x1: number, x2: number, z1: number, z2: number, mat: THREE.Material, y = DECK_Y) => {
+    for (const side of [-1, 1]) g.add(plane(x2 - x1, z1 - z2, mat, [side * (x1 + x2) / 2, y, (z1 + z2) / 2], [-Math.PI / 2, 0, 0]));
+  };
+  strip(HOUSE_HALF, ROOF_HALF, ROOF_FRONT, ROOF_BACK, deck);
+  strip(inner, HOUSE_HALF, ROOF_FRONT, HOUSE_FRONT, deck);
+  strip(inner, HOUSE_HALF, HOUSE_FRONT, ROOF_BACK, dark, -0.012);
+  g.add(plane(inner * 2, ROOF_FRONT - 4.5, deck, [0, DECK_Y, (ROOF_FRONT + 4.5) / 2], [-Math.PI / 2, 0, 0]));
+  g.add(plane(inner * 2, PIT_END_Z - 0.1 - ROOF_BACK, dark, [0, -0.012, (PIT_END_Z - 0.1 + ROOF_BACK) / 2], [-Math.PI / 2, 0, 0]));
+
+  const brick = brickTexture([12, 42, 30], '#3a2524');
+  const brickMat = std('#ffffff', { map: brick, roughness: 0.95 });
+  const trim = std('#d9c3a8', { roughness: 0.7 });
+  const BW = 0.92;
+  const BH = 0.6;
+  const wallT = 0.25;
+  const houseLen = HOUSE_FRONT - ROOF_BACK;
+  const houseMid = (HOUSE_FRONT + ROOF_BACK) / 2;
+  // Front wall above the masking units, and down to the roof either side of them
+  g.add(tiledBox(HOUSE_HALF * 2, HOUSE_TOP - MASK_TOP, wallT, brickMat, 0, (HOUSE_TOP + MASK_TOP) / 2, HOUSE_FRONT - wallT / 2, BW, BH));
   for (const side of [-1, 1]) {
-    g.add(plane(sideW, ROOF_FRONT - ROOF_BACK, deck, [side * (ROOF_HALF - sideW / 2), DECK_Y, (ROOF_FRONT + ROOF_BACK) / 2], [-Math.PI / 2, 0, 0]));
+    const w = HOUSE_HALF - MASK_EDGE;
+    g.add(tiledBox(w, MASK_TOP, wallT, brickMat, side * (MASK_EDGE + w / 2), MASK_TOP / 2, HOUSE_FRONT - wallT / 2, BW, BH));
+    // Side walls back to the end of the roof
+    g.add(tiledBox(wallT, HOUSE_TOP, houseLen, brickMat, side * (HOUSE_HALF - wallT / 2), HOUSE_TOP / 2, houseMid, BW, BH));
   }
-  const between = (z1: number, z2: number) =>
-    g.add(plane((OUTER_HALF + 0.04) * 2, z1 - z2, deck, [0, DECK_Y, (z1 + z2) / 2], [-Math.PI / 2, 0, 0]));
-  between(ROOF_FRONT, 4.5); // behind the bowler
-  between(PIT_END_Z - 0.1, ROOF_BACK); // behind the pit
+  // Dark back wall inside, behind the neighbours' pins, and a dark ceiling over them
+  g.add(boxAt(HOUSE_HALF * 2, MASK_TOP, 0.05, dark, 0, MASK_TOP / 2, PIT_END_Z - 0.2));
+  g.add(boxAt(HOUSE_HALF * 2, 0.04, HOUSE_FRONT - wallT - (PIT_END_Z - 0.2), dark, 0, 1.28, (HOUSE_FRONT - wallT + PIT_END_Z - 0.2) / 2));
+  // Flat roof with a stone coping that overhangs the walls a little
+  g.add(boxAt(HOUSE_HALF * 2, 0.1, houseLen, std('#4a3a40'), 0, HOUSE_TOP - 0.05, houseMid));
+  g.add(boxAt(HOUSE_HALF * 2 + 0.16, 0.14, 0.34, trim, 0, HOUSE_TOP + 0.07, HOUSE_FRONT - 0.1));
+  for (const side of [-1, 1]) g.add(boxAt(0.34, 0.14, houseLen, trim, side * (HOUSE_HALF - 0.1), HOUSE_TOP + 0.07, houseMid));
+  // A painted band under the coping, and a sill line where the wall meets the masking units
+  g.add(boxAt(HOUSE_HALF * 2 + 0.02, 0.1, 0.02, trim, 0, HOUSE_TOP - 0.25, HOUSE_FRONT + 0.005));
+  for (const side of [-1, 1]) g.add(boxAt(HOUSE_HALF - MASK_EDGE + 0.02, 0.08, 0.04, trim, side * (MASK_EDGE + (HOUSE_HALF - MASK_EDGE) / 2), MASK_TOP, HOUSE_FRONT + 0.01));
+  // Wall lamps either side of the sign
+  const lampGlow = basic('#ffe0a0');
+  for (const side of [-1, 1]) {
+    const x = side * 2.45;
+    g.add(boxAt(0.05, 0.25, 0.08, steel, x, 2.1, HOUSE_FRONT + 0.04));
+    g.add(boxAt(0.16, 0.1, 0.22, steel, x, 2.28, HOUSE_FRONT + 0.12));
+    g.add(boxAt(0.12, 0.02, 0.16, lampGlow, x, 2.225, HOUSE_FRONT + 0.14));
+  }
+  // Rooftop kit on the pinsetter house: a timber water tank on legs and an air-con unit
+  const timber = std('#6b4a35', { roughness: 0.9 });
+  const tankX = -1.6;
+  const tankZ = HOUSE_FRONT - 1.6;
+  for (const [dx, dz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) {
+    g.add(boxAt(0.07, 0.9, 0.07, steel, tankX + dx, HOUSE_TOP + 0.45, tankZ + dz));
+  }
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 1.2, 20), timber);
+  tank.position.set(tankX, HOUSE_TOP + 1.5, tankZ);
+  const tankRoof = new THREE.Mesh(new THREE.ConeGeometry(0.82, 0.45, 20), std('#3a2a2a'));
+  tankRoof.position.set(tankX, HOUSE_TOP + 2.32, tankZ);
+  g.add(tank, tankRoof);
+  for (const y of [0.25, 0.75]) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.02, 6, 24), steel);
+    hoop.rotation.x = Math.PI / 2;
+    hoop.position.set(tankX, HOUSE_TOP + 0.9 + y, tankZ);
+    g.add(hoop);
+  }
+  g.add(boxAt(1.1, 0.7, 0.8, std('#9a9aa0', { metalness: 0.3, roughness: 0.5 }), 1.7, HOUSE_TOP + 0.35, HOUSE_FRONT - 1.2));
+  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.02, 16), std('#2a2a30'));
+  fan.position.set(1.7, HOUSE_TOP + 0.71, HOUSE_FRONT - 1.2);
+  g.add(fan);
 
   // No ceiling up here: the scoreboard hangs from a slim gantry across the lanes
-  const steel = std('#3a2a33', { metalness: 0.6, roughness: 0.4 });
   const GANTRY_Y = 3.8;
   for (const side of [-1, 1]) g.add(boxAt(0.08, GANTRY_Y, 0.08, steel, side * (WALL_X - 0.2), GANTRY_Y / 2, -1.2));
   g.add(boxAt((WALL_X - 0.2) * 2 + 0.08, 0.08, 0.08, steel, 0, GANTRY_Y, -1.2));
   g.add(scoreMonitor(scores, GANTRY_Y));
 
-  // Low parapet walls around the roof, with potted plants
+  // Low parapet walls around the open roof (the pinsetter house closes the far end), with
+  // potted plants
   const concrete = std('#6e5a6a');
-  for (const side of [-1, 1]) g.add(boxAt(0.25, 1, ROOM_LEN + 6, concrete, side * (WALL_X + 3.2), 0.5, MID_Z));
-  g.add(boxAt(WALL_X * 2 + 6.6, 1, 0.25, concrete, 0, 0.5, FRONT_Z + 3));
-  g.add(boxAt(WALL_X * 2 + 6.6, 1, 0.25, concrete, 0, 0.5, BACK_Z - 3));
+  const PARAPET_LEN = ROOF_FRONT - ROOF_BACK;
+  for (const side of [-1, 1]) g.add(boxAt(0.25, 1, PARAPET_LEN, concrete, side * ROOF_HALF, 0.5, (ROOF_FRONT + ROOF_BACK) / 2));
+  g.add(boxAt(ROOF_HALF * 2, 1, 0.25, concrete, 0, 0.5, ROOF_FRONT));
+  g.add(boxAt((ROOF_HALF - HOUSE_HALF), 1, 0.25, concrete, -(ROOF_HALF + HOUSE_HALF) / 2, 0.5, ROOF_BACK));
+  g.add(boxAt((ROOF_HALF - HOUSE_HALF), 1, 0.25, concrete, (ROOF_HALF + HOUSE_HALF) / 2, 0.5, ROOF_BACK));
+  const coping = std('#8a7684');
+  for (const side of [-1, 1]) g.add(boxAt(0.35, 0.06, PARAPET_LEN, coping, side * ROOF_HALF, 1.03, (ROOF_FRONT + ROOF_BACK) / 2));
+  g.add(boxAt(ROOF_HALF * 2 + 0.1, 0.06, 0.35, coping, 0, 1.03, ROOF_FRONT));
   const pot = std('#b5653a');
   const leaf = std('#3f8f3a');
   for (const [x, z] of [[-4.6, 7], [4.6, 7], [-4.6, 0], [4.6, 0], [-4.6, -8], [4.6, -8], [2, 10.6], [-2.5, 10.6]]) {
@@ -463,31 +653,79 @@ function rooftop(scores: THREE.Texture): Built {
     g.add(bush);
   }
 
-  // City skyline all around, with lit windows
-  const windows = canvasTexture(64, 128, (c) => {
-    c.fillStyle = '#231a33';
-    c.fillRect(0, 0, 64, 128);
-    for (let y = 4; y < 128; y += 10) for (let x = 4; x < 64; x += 10) {
-      c.fillStyle = Math.random() < 0.35 ? '#ffcf7a' : '#1a1326';
-      c.fillRect(x, y, 5, 6);
-    }
+  // City skyline all around: towers with storey-sized windows, flat roofs, setbacks, water
+  // tanks and masts. Most roofs sit below ours, a few stand taller, so it feels high up.
+  const facades = FACADES.map((f, i) => {
+    const { map, glowMap } = facadeTextures(f, 17 + i * 31);
+    return new THREE.MeshStandardMaterial({ map, emissive: '#ffffff', emissiveMap: glowMap, emissiveIntensity: 0.9, roughness: 0.85 });
   });
-  windows.wrapS = windows.wrapT = THREE.RepeatWrapping;
-  const towerMat = new THREE.MeshStandardMaterial({ map: windows, emissive: '#ffffff', emissiveMap: windows, emissiveIntensity: 0.6, roughness: 0.9 });
-  const rand = (() => {
-    let s = 11;
-    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-  })();
-  for (let i = 0; i < 70; i++) {
-    const a = (i / 70) * Math.PI * 2;
-    const dist = 70 + rand() * 70;
-    const w = 7 + rand() * 12;
-    const h = 20 + rand() * 40;
-    const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), towerMat);
-    // Most tops sit below our roof, a few stand taller, so it feels high up
-    tower.position.set(Math.sin(a) * dist, h / 2 - 44, -Math.cos(a) * dist - 10);
-    g.add(tower);
+  const roofMat = std('#3b3440', { roughness: 1 });
+  const kitMat = std('#5a5058', { roughness: 0.9 });
+  const tankMat = std('#5e4636', { roughness: 0.9 });
+  const beacons: THREE.Vector3[] = [];
+  const rand = seeded(11);
+  const GROUND = -44;
+  const TW = TILE_BAYS * BAY;
+  const TH = TILE_FLOORS * FLOOR;
+  const tower = (w: number, d: number, bottom: number, top: number, x: number, z: number, side: THREE.Material) => {
+    const h = top - bottom;
+    // Line the floors up across a building's blocks, and start each on a random tile spot
+    const offU = Math.floor(rand() * TILE_BAYS) / TILE_BAYS;
+    const offV = (bottom - GROUND) / TH;
+    const m = tiledBox(w, h, d, [side, side, roofMat, roofMat, side, side], x, (top + bottom) / 2, z, TW, TH);
+    tileBoxUVs(m.geometry as THREE.BoxGeometry, w, h, d, TW, TH, offU, offV);
+    m.receiveShadow = false;
+    g.add(m);
+  };
+  for (let i = 0; i < 64; i++) {
+    const a = ((i + rand() * 0.6) / 64) * Math.PI * 2;
+    const dist = 55 + rand() * 85;
+    // Widths and depths in whole window bays, so windows don't get cut at the corners
+    const w = BAY * (4 + Math.floor(rand() * 7));
+    const d = BAY * (4 + Math.floor(rand() * 7));
+    const tall = rand() < 0.18;
+    // Whole storeys too: the roof sits on a floor line
+    const floors = Math.round(((tall ? 10 + rand() * 30 : -14 + rand() * 20) - GROUND) / FLOOR);
+    const top = GROUND + floors * FLOOR;
+    const x = Math.sin(a) * dist;
+    const z = -Math.cos(a) * dist - 10;
+    const side = facades[Math.floor(rand() * facades.length)];
+    tower(w, d, GROUND, top, x, z, side);
+    let roof = top;
+    if (tall && rand() < 0.7) {
+      // A setback crown on the tall ones
+      const sw = Math.max(BAY * 2, w - BAY * 2);
+      const sd = Math.max(BAY * 2, d - BAY * 2);
+      const extra = FLOOR * (2 + Math.floor(rand() * 5));
+      tower(sw, sd, top, top + extra, x, z, side);
+      roof = top + extra;
+    }
+    if (tall && rand() < 0.6) {
+      const mast = boxAt(0.4, 8, 0.4, kitMat, x, roof + 4, z);
+      g.add(mast);
+      beacons.push(new THREE.Vector3(x, roof + 8.2, z));
+    } else if (rand() < 0.5) {
+      // Water tank or plant room on the roof
+      const tx = x + (rand() - 0.5) * (w - 4);
+      const tz = z + (rand() - 0.5) * (d - 4);
+      if (rand() < 0.5) {
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 3, 12), tankMat);
+        t.position.set(tx, roof + 3.2, tz);
+        const legs = boxAt(2.4, 1.7, 2.4, kitMat, tx, roof + 0.85, tz);
+        g.add(t, legs);
+      } else {
+        g.add(boxAt(3 + rand() * 3, 2.5, 3 + rand() * 3, kitMat, tx, roof + 1.25, tz));
+      }
+    }
   }
+  // Red aviation beacons on the masts, blinking together
+  const beaconMat = basic('#ff3a2a');
+  const beaconMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.45, 8, 6), beaconMat, Math.max(1, beacons.length));
+  const bm = new THREE.Matrix4();
+  beacons.forEach((b, i) => beaconMesh.setMatrixAt(i, bm.makeTranslation(b.x, b.y, b.z)));
+  beaconMesh.count = beacons.length;
+  g.add(beaconMesh);
+
   // The setting sun
   const sun = new THREE.Mesh(new THREE.CircleGeometry(9, 48), basic('#ffb35c'));
   sun.position.set(-18, 4, -140);
@@ -531,6 +769,8 @@ function rooftop(scores: THREE.Texture): Built {
     update: (t) => {
       // Bulbs flicker gently
       (bulbMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 1, 0.8 + Math.sin(t * 3) * 0.03);
+      // Aviation beacons: a short red flash every 1.5 s
+      beaconMat.color.set(t % 1.5 < 0.35 ? '#ff3a2a' : '#3a0a08');
     },
     apply: (scene, l) => {
       scene.background = sky;
