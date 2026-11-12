@@ -101,3 +101,37 @@ export function pickLine(kind: ReactionKind, random = Math.random): string {
   lastLine.set(kind, line);
   return line;
 }
+
+/** Reactions Dave always has something to say about. */
+const ALWAYS_COMMENT: ReactionKind[] = ['strike', 'spare', 'split', 'gutter', 'miss'];
+/** Chance he chimes in after an ordinary count. */
+const ORDINARY_CHANCE = 0.4;
+/** He never stays quiet for more than this many balls in a row. */
+const MAX_QUIET = 2;
+
+/**
+ * Decides whether Dave cuts in with a reaction after a ball. Big moments always get one;
+ * ordinary counts only sometimes, so the game keeps moving without him going silent for long.
+ */
+export class CommentPacer {
+  private quiet = 0;
+
+  constructor(private random = Math.random) {}
+
+  shouldComment(kind: ReactionKind): boolean {
+    const comment = ALWAYS_COMMENT.includes(kind) || this.quiet >= MAX_QUIET || this.random() < ORDINARY_CHANCE;
+    this.quiet = comment ? 0 : this.quiet + 1;
+    return comment;
+  }
+}
+
+/**
+ * What bowlers call a run of strikes, for the big banner: a turkey is three in a row, a
+ * hambone four, then five-bagger, six-bagger and so on. Shorter runs get no banner.
+ */
+export function streakName(strikesInARow: number): string | null {
+  if (strikesInARow < 3) return null;
+  if (strikesInARow === 3) return 'TURKEY!';
+  if (strikesInARow === 4) return 'HAMBONE!';
+  return `${strikesInARow}-BAGGER!`;
+}

@@ -18,7 +18,6 @@
     <div id="hud">
       <div id="scorecard"></div>
       <p id="status" aria-live="polite"></p>
-      <p id="readout"></p>
     </div>
     <button id="pause-btn" class="icon-btn" aria-label="Pause">❚❚</button>
 
@@ -33,11 +32,13 @@
       <button data-rack="4,6,7,10">Big four</button>
     </div>
 
+    <p id="aim-legend" hidden></p>
     <div id="speech" aria-live="polite" hidden></div>
     <button id="ff-btn" aria-pressed="false" hidden>⏩ Fast forward</button>
     <button id="replay-btn" hidden>🎥 Replay</button>
     <div id="replay-badge" hidden><span class="dot"></span>REPLAY<small>Tap to skip</small></div>
     <div id="toast" role="status" hidden></div>
+    <div id="banner" aria-live="polite" hidden></div>
 
     <div id="power" aria-hidden="true"><div id="power-fill"></div><span>Power</span></div>
 

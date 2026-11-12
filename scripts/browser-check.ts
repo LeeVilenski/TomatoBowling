@@ -80,8 +80,13 @@ async function main() {
     const rolls = await page.evaluate(() => window.__game.match!.players[0].rolls);
     check(rolls.length === 1, `the throw is scored (${rolls.join()})`);
 
-    // Replay from the pinsetter camera
-    check(await page.isVisible('#replay-btn'), 'replay button appears after the throw');
+    // Replay from the pinsetter camera. Strikes replay on their own; anything else has a button.
+    if (rolls[0] === 10) {
+      await waitPhase(page, 'replay');
+      check(true, 'a strike replays automatically');
+    } else {
+      check(await page.isVisible('#replay-btn'), 'replay button appears after the throw');
+    }
     // The replay camera peeks out from inside the pinsetter: the masking unit stays put
     const maskingShown = () =>
       page.evaluate(() => {
@@ -92,7 +97,7 @@ async function main() {
         return shown;
       });
     const maskingBefore = await maskingShown();
-    await page.evaluate(() => window.__game.controls.replay());
+    if ((await phase(page)) !== 'replay') await page.evaluate(() => window.__game.controls.replay());
     check((await phase(page)) === 'replay' && (await page.isVisible('#replay-badge')), 'replay starts');
     check(maskingBefore > 0 && (await maskingShown()) === maskingBefore, 'the masking unit stays in place during the replay');
     await waitPhase(page, 'result', 'sweeping', 'aiming');
