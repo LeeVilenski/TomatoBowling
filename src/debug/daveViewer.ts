@@ -5,6 +5,7 @@ import type { ReactionKind } from '../game/reactions';
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') ?? 'front';
+const outfit = params.get('outfit');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -23,6 +24,7 @@ scene.add(floor);
 const states: (string)[] = ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
 const daves = states.map((s, i) => {
   const d = new Dave();
+  if (outfit) d.setOutfit(outfit);
   d.setStance((i - (states.length - 1) / 2) * 0.9, 0);
   scene.add(d.root);
   if (s === 'charge') d.charge(0.8);
