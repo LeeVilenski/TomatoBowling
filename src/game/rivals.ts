@@ -22,6 +22,8 @@ export interface Rival extends BowlerSkill {
   emoji: string;
   /** What they say after their own balls (a few per kind of result). */
   lines: Record<ReactionKind, string[]>;
+  /** A bit of trash talk on the career match intro (one picked at random). */
+  intro: string[];
 }
 
 export const RIVALS: Rival[] = [
@@ -33,6 +35,7 @@ export const RIVALS: Rival[] = [
     targetAverage: 70,
     outfit: 'rival-pickle',
     head: 'pickle',
+    intro: ["Oh! Hello. I've been practising. A bit. Please go easy on me.", "I'm not nervous. You're nervous. Okay, I'm nervous.", 'Big dill today, huh?'],
     lines: {
       strike: ['Oh! Oh my. Did I do that?', 'Big dill!', 'Pickled tink!'],
       spare: ['Phew. Brine and dandy.', 'Relish the moment!', 'I got them!'],
@@ -55,6 +58,7 @@ export const RIVALS: Rival[] = [
     targetAverage: 95,
     outfit: 'rival-donut',
     head: 'donut',
+    intro: ['Hope you like it fast, sweetie.', "I don't do slow. Or straight-ish. Or careful.", 'Ready to get glazed?'],
     lines: {
       strike: ['Glazed and amazed!', 'Hole in one! Wait, wrong sport.', 'Sprinkle THAT!'],
       spare: ['Filled it!', 'Sweet.', 'Got the jam out of the middle.'],
@@ -77,6 +81,7 @@ export const RIVALS: Rival[] = [
     targetAverage: 115,
     outfit: 'rival-sandy',
     head: 'sandwich',
+    intro: ["Leave me a spare. I dare you.", "I've got layers, Dave. You've got... seeds.", "Let me guess: you're the filling?"],
     lines: {
       strike: ['Stacked it!', 'Toasted the lot.', 'A club sandwich special!'],
       spare: ['Spares are my bread and butter.', 'Layered to perfection.', 'As planned. Obviously.'],
@@ -100,6 +105,7 @@ export const RIVALS: Rival[] = [
     targetAverage: 135,
     outfit: 'rival-carl',
     head: 'carrot',
+    intro: ["So. The little tomato finally made it to the top rung.", "I've been champion here for years, Dave. Years.", "Ten frames. No hiding. Let's see what you've got."],
     lines: {
       strike: ["That's the Carl special.", 'Root and branch!', 'Pure carrot-ine.', 'Some of us just have it, Dave.'],
       spare: ['Tidy.', 'Cleaned up, as usual.', 'Peeled right off.'],

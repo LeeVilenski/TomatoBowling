@@ -1,4 +1,4 @@
-import { mark, position, scoreFrames } from './scoring';
+import { FRAMES, mark, position, scoreFrames } from './scoring';
 
 export interface Player {
   name: string;
@@ -22,8 +22,13 @@ export class Match {
   readonly players: Player[];
   current = 0;
 
-  constructor(names: string[]) {
+  /** `frames`: 10 for a standard game; career mode's early matches are shorter. */
+  constructor(
+    names: string[],
+    readonly frames = FRAMES,
+  ) {
     if (names.length < 1 || names.length > 4) throw new Error('1 to 4 players');
+    if (frames < 1 || frames > FRAMES) throw new Error('1 to 10 frames');
     this.players = names.map((name) => ({ name, rolls: [] }));
   }
 
@@ -33,20 +38,20 @@ export class Match {
 
   /** Where the current player is: frame, ball and pins standing. */
   get position() {
-    return position(this.player.rolls);
+    return position(this.player.rolls, this.frames);
   }
 
   get gameOver() {
-    return this.players.every((p) => position(p.rolls).complete);
+    return this.players.every((p) => position(p.rolls, this.frames).complete);
   }
 
   /** Records `pins` knocked down by the current player and moves the game on. */
   recordRoll(pins: number): RollOutcome {
-    const before = position(this.player.rolls);
+    const before = position(this.player.rolls, this.frames);
     if (before.complete) throw new Error('This player has finished');
     const clamped = Math.max(0, Math.min(before.standing, Math.round(pins)));
     this.player.rolls.push(clamped);
-    const after = position(this.player.rolls);
+    const after = position(this.player.rolls, this.frames);
     const frameDone = after.complete || after.frame !== before.frame;
 
     let playerChanged = false;
@@ -54,7 +59,7 @@ export class Match {
       // Next player who still has frames left
       for (let step = 1; step <= this.players.length; step++) {
         const next = (this.current + step) % this.players.length;
-        if (!position(this.players[next].rolls).complete) {
+        if (!position(this.players[next].rolls, this.frames).complete) {
           playerChanged = next !== this.current;
           this.current = next;
           break;
@@ -66,13 +71,13 @@ export class Match {
       mark: mark(clamped, before.standing, before.fresh),
       frameDone,
       playerChanged,
-      freshRack: gameOver || frameDone || position(this.player.rolls).standing === 10,
+      freshRack: gameOver || frameDone || position(this.player.rolls, this.frames).standing === 10,
       gameOver,
     };
   }
 
   totals() {
-    return this.players.map((p) => scoreFrames(p.rolls).total);
+    return this.players.map((p) => scoreFrames(p.rolls, this.frames).total);
   }
 
   /** Indices of the player(s) with the highest score. */

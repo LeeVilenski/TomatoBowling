@@ -1,5 +1,7 @@
 // Ten-pin scoring rules. Pure functions over a player's list of rolls (pins knocked down per ball).
 
+/** A standard game. Shorter matches (career mode's early rivals) pass their own count, and
+ * their last frame follows the 10th-frame rules (bonus balls after a strike or spare). */
 export const FRAMES = 10;
 
 export interface FrameView {
@@ -10,7 +12,7 @@ export interface FrameView {
 }
 
 export interface Position {
-  /** 0-based frame for the next roll (10 once the game is over). */
+  /** 0-based frame for the next roll (the frame count, e.g. 10, once the game is over). */
   frame: number;
   /** 0-based ball within that frame. */
   ball: number;
@@ -22,11 +24,11 @@ export interface Position {
 }
 
 /** Splits a flat list of rolls into frames (the last one may be unfinished). */
-export function splitFrames(rolls: number[]): number[][] {
+export function splitFrames(rolls: number[], count = FRAMES): number[][] {
   const frames: number[][] = [];
   let i = 0;
-  while (i < rolls.length && frames.length < FRAMES) {
-    if (frames.length === FRAMES - 1) {
+  while (i < rolls.length && frames.length < count) {
+    if (frames.length === count - 1) {
       frames.push(rolls.slice(i, i + 3));
       break;
     }
@@ -62,14 +64,14 @@ function tenthStanding(f: number[], ball: number): number {
   return 10; // spare in the first two balls
 }
 
-export function position(rolls: number[]): Position {
-  const frames = splitFrames(rolls);
-  const done = { frame: FRAMES, ball: 0, standing: 10, fresh: true, complete: true };
+export function position(rolls: number[], count = FRAMES): Position {
+  const frames = splitFrames(rolls, count);
+  const done = { frame: count, ball: 0, standing: 10, fresh: true, complete: true };
   if (frames.length === 0) return { frame: 0, ball: 0, standing: 10, fresh: true, complete: false };
   const last = frames[frames.length - 1];
   const idx = frames.length - 1;
 
-  if (idx === FRAMES - 1) {
+  if (idx === count - 1) {
     if (tenthFrameDone(last)) return done;
     const ball = last.length;
     return { frame: idx, ball, standing: tenthStanding(last, ball), fresh: tenthFresh(last, ball), complete: false };
@@ -90,16 +92,16 @@ export function mark(pins: number, standing: number, fresh: boolean): string {
   return String(pins);
 }
 
-export function scoreFrames(rolls: number[]): { frames: FrameView[]; total: number } {
-  const split = splitFrames(rolls);
+export function scoreFrames(rolls: number[], count = FRAMES): { frames: FrameView[]; total: number } {
+  const split = splitFrames(rolls, count);
   const views: FrameView[] = [];
   let running = 0;
   let rollIndex = 0;
   let totalKnown = true;
 
-  for (let f = 0; f < FRAMES; f++) {
+  for (let f = 0; f < count; f++) {
     const frame = split[f] ?? [];
-    const tenth = f === FRAMES - 1;
+    const tenth = f === count - 1; // the last frame, with its bonus balls
     const boxes = tenth ? ['', '', ''] : ['', ''];
 
     if (tenth) {
@@ -141,12 +143,12 @@ export function scoreFrames(rolls: number[]): { frames: FrameView[]; total: numb
 }
 
 /** Best possible final score from here (assumes strikes on every remaining ball). */
-export function maxPossible(rolls: number[]): number {
+export function maxPossible(rolls: number[], count = FRAMES): number {
   const extra: number[] = [...rolls];
-  let p = position(extra);
+  let p = position(extra, count);
   while (!p.complete) {
     extra.push(p.standing);
-    p = position(extra);
+    p = position(extra, count);
   }
-  return scoreFrames(extra).total;
+  return scoreFrames(extra, count).total;
 }

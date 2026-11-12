@@ -10,8 +10,8 @@ export function renderScorecard(el: HTMLElement, match: Match | null) {
     return;
   }
   const rows = match.players.map((p, i) => {
-    const { frames, total } = scoreFrames(p.rolls);
-    const pos = position(p.rolls);
+    const { frames, total } = scoreFrames(p.rolls, match.frames);
+    const pos = position(p.rolls, match.frames);
     const isCurrent = i === match.current && !match.gameOver;
     const cells = frames
       .map((f, fi) => {
@@ -28,7 +28,7 @@ export function renderScorecard(el: HTMLElement, match: Match | null) {
   const others =
     match.players.length > 1
       ? `<div class="sc-others">${match.players
-          .map((p, i) => (i === match.current ? '' : `<span>${esc(p.name)} <b>${scoreFrames(p.rolls).total}</b></span>`))
+          .map((p, i) => (i === match.current ? '' : `<span>${esc(p.name)} <b>${scoreFrames(p.rolls, match.frames).total}</b></span>`))
           .join('')}</div>`
       : '';
   el.innerHTML = rows.join('') + others;

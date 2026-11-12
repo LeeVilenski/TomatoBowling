@@ -81,6 +81,8 @@ export const OUTFITS: Record<string, Outfit> = {
   tuxedo: { suit: '#121216', bowTie: true, shirt: true, shoes: '#0a0a0a' },
   pinstripe: { suit: '#3a3d48', pattern: 'pinstripe', tie: '#e0b02e', shirt: true, shoes: '#5a2e14' },
   tracksuit: { suit: TRACK.green, pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
+  // The champion's prize for topping the Tomato Dave's ladder
+  blazer: { suit: '#7a1414', bowTie: true, shirt: true, shoes: '#0a0a0a' },
   // Computer rivals' colours (they bowl in Dave's body until they get heads of their own)
   'rival-pickle': { suit: '#5c7a2a', tie: '#e8d44d', shirt: true, shoes: '#3a2a12' },
   'rival-donut': { suit: '#e06fa3', tie: '#7a3b1e', shirt: true, shoes: '#f4f4f4' },

@@ -64,6 +64,13 @@ export class LeaderboardScreen {
     $('lb-view').hidden = true;
   }
 
+  /** No submissions for this game (e.g. career matches, which aren't comparable). */
+  hide() {
+    this.entries = [];
+    this.list.innerHTML = '';
+    this.form.hidden = true;
+  }
+
   private setMsg(entry: Entry, text: string, kind: '' | 'error' | 'good' = '') {
     entry.msg.textContent = text;
     entry.msg.className = 'small lb-msg ' + kind;

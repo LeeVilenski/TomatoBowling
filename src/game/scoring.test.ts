@@ -132,3 +132,26 @@ describe('helpers', () => {
     expect(maxPossible(repeat(9, 0, 0))).toBe(30);
   });
 });
+
+describe('shorter games (career mode)', () => {
+  it('a perfect 5-frame game is seven strikes for 150', () => {
+    expect(position(Array(6).fill(10), 5).complete).toBe(false);
+    expect(position(Array(7).fill(10), 5).complete).toBe(true);
+    expect(scoreFrames(Array(7).fill(10), 5).total).toBe(150);
+    expect(maxPossible([], 5)).toBe(150);
+  });
+
+  it('the last frame gets bonus balls after a spare, and ends without one', () => {
+    const nines = [9, 0, 9, 0, 9, 0, 9, 0];
+    expect(position([...nines, 9, 0], 5).complete).toBe(true);
+    expect(scoreFrames([...nines, 9, 0], 5).total).toBe(45);
+    expect(position([...nines, 9, 1], 5)).toMatchObject({ frame: 4, ball: 2, standing: 10, complete: false });
+    expect(scoreFrames([...nines, 9, 1, 10], 5).total).toBe(36 + 20);
+    expect(scoreFrames([...nines, 9, 1, 10], 5).frames[4].boxes).toEqual(['9', '/', 'X']);
+  });
+
+  it('a standard game is unchanged', () => {
+    expect(scoreFrames(Array(12).fill(10)).total).toBe(300);
+    expect(scoreFrames(Array(12).fill(10)).frames).toHaveLength(10);
+  });
+});
