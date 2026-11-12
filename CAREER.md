@@ -121,7 +121,7 @@ Each step is playable on its own and can ship by itself:
 3. ✅ *Built:* **Ladder for stage 1.** Ladder screen, match intro and result cards, saving, stars. Three rivals plus Carrot Carl at Tomato Dave's.
 4. ✅ *Built:* **Stages 2–4.** The remaining rivals and venue rules (long oil, bouncy pins, breeze, dry lanes), each tuned with the harness.
 5. ✅ *Built:* **The Golden Pin.** A new final venue (a gold-and-velvet hall, its own music track), the Pumpkin King, and an ending with credits.
-6. **Polish.** Career stats page, trash-talk lines, a ⏩ skip for the rival's turn, and perhaps a career leaderboard.
+6. ✅ *Built (all but the leaderboard):* **Polish.** Career stats page, trash-talk lines, a ⏩ skip for the rival's turn, and perhaps a career leaderboard.
 
 A rough size guide: step 1 is the biggest single piece of work. Steps 2–4 are mostly content once 1 and 3 exist.
 

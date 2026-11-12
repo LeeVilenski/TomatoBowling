@@ -37,6 +37,7 @@
     <div id="speech" aria-live="polite" hidden></div>
     <button id="ff-btn" aria-pressed="false" hidden>⏩ Fast forward</button>
     <button id="replay-btn" hidden>🎥 Replay</button>
+    <button id="skip-btn" hidden>⏩ Skip their turn</button>
     <div id="replay-badge" hidden><span class="dot"></span>REPLAY<small>Tap to skip</small></div>
     <div id="toast" role="status" hidden></div>
     <div id="banner" aria-live="polite" hidden></div>
@@ -100,7 +101,20 @@
         <div id="career-resume" hidden><button id="career-resume-btn" class="primary"></button></div>
         <ol id="ladder" class="ladder"></ol>
         <p id="career-stars" class="small"></p>
-        <div class="buttons"><button data-go="menu" class="ghost">Back</button></div>
+        <div class="buttons">
+          <button data-go="careerstats">📊 Career stats</button>
+          <button data-go="menu" class="ghost">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="careerstats" class="screen" hidden>
+      <div class="card">
+        <h2>📊 Career stats</h2>
+        <div id="stats-tiles" class="stat-tiles"></div>
+        <h3>Head to head</h3>
+        <table id="stats-h2h" class="h2h"></table>
+        <div class="buttons"><button data-go="career" class="ghost">Back to the ladder</button></div>
       </div>
     </section>
 

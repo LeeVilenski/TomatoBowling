@@ -417,7 +417,7 @@ body.replaying #aim-legend { visibility: hidden; }
 .unlocks { margin: 10px 0 0; padding: 10px; border-radius: 12px; background: rgba(255, 210, 58, 0.15); font-size: 14px; }
 
 /* Fast forward (shown while the ball rolls) */
-#ff-btn, #replay-btn {
+#ff-btn, #replay-btn, #skip-btn {
   position: fixed;
   right: 16px;
   bottom: calc(max(14px, env(safe-area-inset-bottom)) + 44px);
@@ -585,3 +585,19 @@ body.replaying #hint, body.replaying #spin, body.replaying #practice-panel { vis
 .credits-roll p { margin: 2px 0; }
 @keyframes credits-up { to { transform: translateY(-100%); } }
 @media (prefers-reduced-motion: reduce) { .credits-roll { animation: none; padding-top: 0; } .credits-window { overflow-y: auto; } }
+
+/* Career stats */
+.stat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 4px; }
+.stat-tiles .tile { background: #2f1c44; border-radius: 12px; padding: 8px 4px; }
+.stat-tiles .tile b { display: block; font-size: 20px; color: #ffd23a; font-variant-numeric: tabular-nums; }
+.stat-tiles .tile span { font-size: 11px; opacity: 0.8; }
+.h2h { width: 100%; border-collapse: collapse; font-size: 14px; }
+.h2h td { padding: 5px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.h2h td:first-child { text-align: left; }
+.h2h td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.h2h .off { opacity: 0.2; }
+#careerstats .card { max-height: 88vh; overflow-y: auto; }
+.rival-quote { margin: 4px 0 2px; font-style: italic; font-size: 14px; }
+.rival-quote::before, .rival-quote::after { content: none; }
+/* Sits above Fast forward, which can show at the same time */
+#skip-btn { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 100px); }

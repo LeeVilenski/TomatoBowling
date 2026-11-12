@@ -22,12 +22,12 @@ import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
 import { chooseTarget, humanise, planThrow, pressureFor } from './game/ai';
 import { RIVALS, rivalById, type Rival } from './game/rivals';
-import { isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
+import { addMatchStats, isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, NO_STATS, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
 import { FRAMES } from './game/scoring';
 import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
 import { Scoreboard, type ScoreAnimation } from './scene/scoreboard';
-import { classifyThrow, CommentPacer, pickLine, streakName, type ReactionKind } from './game/reactions';
+import { classifyThrow, CommentPacer, pickLine, pickVsLine, streakName, type ReactionKind } from './game/reactions';
 import { SpeechBubble } from './ui/speech';
 import { Sound } from './audio/sound';
 import { LeaderboardScreen } from './ui/leaderboardScreen';
@@ -275,6 +275,13 @@ async function start() {
   let matchLog: number[] = [];
   let cpuTimer = 0;
   let cpuThrow: ThrowParams | null = null;
+  /** Rushing through the rival's turn (the ⏩ Skip button): quick rolls, no pauses. */
+  let rushing = false;
+  const skipBtn = $('skip-btn') as HTMLButtonElement;
+  skipBtn.addEventListener('click', () => {
+    rushing = true;
+    if (phase === 'rolling' || phase === 'settling') setFastForward(true);
+  });
   const cpuTurn = () => mode === 'cpu' && rival !== null && match !== null && match.current === 1 && !match.gameOver;
   let match: Match | null = null;
   let outcome: RollOutcome | null = null;
@@ -311,6 +318,7 @@ async function start() {
     settleTime = 0;
     lastReplay = null;
     recorder.start();
+    if (rushing) setFastForward(true);
     if (throwsMade < HINT_THROWS && !cpuTurn()) {
       throwsMade++;
       storage.saveCount('throws', throwsMade);
@@ -342,7 +350,7 @@ async function start() {
     // there's no automatic replay (the button's there)
     const rivalBall = cpuTurn();
     speaker = rivalBall ? rival : null;
-    daveComments = rivalBall ? rivalPacer.shouldComment(reaction) : pacer.shouldComment(reaction);
+    daveComments = rivalBall ? !rushing && rivalPacer.shouldComment(reaction) : pacer.shouldComment(reaction);
     autoReplay = !rivalBall && reaction === 'strike' && lastReplay !== null;
     autoReplayAt = AUTO_REPLAY_AT;
     if (reaction === 'strike') {
@@ -401,9 +409,10 @@ async function start() {
   }
 
   function runPinsetter(setterMode: PinsetterMode) {
+    if (rushing) setFastForward(true);
     if (pendingAnim) {
       scoreboard.play(pendingAnim.kind, pendingAnim.label, pendingAnim.sub);
-      monitorGlance = pendingAnim.glance;
+      monitorGlance = pendingAnim.glance && !rushing;
       pendingAnim = null;
     }
     phase = 'sweeping';
@@ -431,6 +440,7 @@ async function start() {
 
   /** Once the pins are set: the next ball, or the next player's turn. */
   function afterPinsetter(setterMode: PinsetterMode) {
+    if (rushing) setFastForward(false);
     aim = 0; // each ball starts aimed straight down the lane
     phase = 'aiming';
     if (mode === 'practice') {
@@ -464,8 +474,9 @@ async function start() {
       // The rival bowls in Dave's body, wearing its own head and suit
       dave.setOutfit(cpuTurn() ? rival.outfit : equipped.suit);
       dave.setHead(cpuTurn() ? rival.head : 'tomato');
+      if (!cpuTurn()) rushing = false;
       if (cpuTurn()) {
-        cpuTimer = CPU_THINK;
+        cpuTimer = rushing ? 0.15 : CPU_THINK;
         cpuThrow = null;
         setStatus(`${rival.name} is up…`);
         renderScorecard(scorecardEl, match);
@@ -584,6 +595,7 @@ async function start() {
   function startGame(newMode: Mode, names: string[] = ['You'], frames = FRAMES, rung: Rung | null = null, log: number[] = []) {
     endReplay();
     mode = newMode;
+    rushing = false;
     careerRung = rung;
     careerLadder = rung ? ladderOf(rung.rival) : null;
     // Career matches are played at their ladder's venue, under its lane rule
@@ -778,6 +790,7 @@ async function start() {
     dave.react(result.won ? 'strike' : 'meh');
     const wasChampion = isChampion(career, ladder.rungs);
     career = recordResult(career, rung.rival, you, them, result.stars);
+    career = addMatchStats(career, match.players[0].rolls, match.frames, result.won, trackers[0]?.splitsConverted ?? 0);
     storage.saveCareer(career);
     const crowned = !!rung.champion && result.won && !wasChampion;
     const fresh = crowned ? gainProgress({ crowns: [ladder.id], homeChampion: ladder.id === 'classic' }, false) : [];
@@ -806,6 +819,7 @@ async function start() {
     if (crowned && nextLadder) note = `<p class="small">${nextLadder.emoji} <b>${escapeHtml(nextLadder.name)}</b> is open!</p>`;
     if (crowned && final) note = `<p class="small">You've beaten them all. Tomato Dave is the greatest bowler in the land! 🍅👑</p>`;
     $('go-body').innerHTML = `<ul class="results"><li class="${result.won ? 'win' : ''}"><span>You</span><span>${you}</span></li><li class="${!result.won && you !== them ? 'win' : ''}"><span>${rival.emoji} ${escapeHtml(rival.name)}</span><span>${them}</span></li></ul>
+      ${rivalQuote(rival, result.won, you === them)}
       <div class="career-stars" aria-label="${result.stars} of 3 stars">${stars(result.stars)}</div>
       <ul class="star-reasons">${reasons.map(([what, got]) => `<li class="${got ? '' : 'miss'}">${got ? '⭐' : '☆'} ${what}</li>`).join('')}</ul>${note}${
         unlocked.length
@@ -827,6 +841,42 @@ async function start() {
     }
     ($('gc-credits') as HTMLButtonElement).hidden = !(result.won && final);
     ($('gc-rematch') as HTMLButtonElement).onclick = () => startCareerMatch(li, i);
+  }
+
+  /** The rival's parting words on the result card. */
+  function rivalQuote(r: Rival, youWon: boolean, tied: boolean) {
+    if (tied) return '';
+    const pool = youWon ? r.lose : r.win;
+    return `<p class="quote rival-quote">${r.emoji} ${escapeHtml(pool[Math.floor(Math.random() * pool.length)])}</p>`;
+  }
+
+  /** Your career numbers, and your record against every rival you've played. */
+  function openStats() {
+    const s = { ...NO_STATS, ...career.stats };
+    const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : '–');
+    const allStars = LADDERS.reduce((n, l) => n + totalStars(career, l.rungs), 0);
+    const maxStars = LADDERS.reduce((n, l) => n + l.rungs.length * 3, 0);
+    const crowns = LADDERS.filter((l) => isChampion(career, l.rungs)).length;
+    const tiles: [string, string][] = [
+      [String(s.matches), 'matches'],
+      [s.matches ? `${s.wins}–${s.matches - s.wins}` : '–', 'won–lost'],
+      [s.games10 ? String(Math.round(s.pins10 / s.games10)) : '–', 'average (10 frames)'],
+      [s.best10 ? String(s.best10) : '–', 'best game'],
+      [pct(s.strikes, s.strikeChances), 'strikes'],
+      [pct(s.spares, s.spareChances), 'spares'],
+      [String(s.splitsConverted), 'splits picked up'],
+      [`${allStars}/${maxStars}`, 'stars'],
+      [`${crowns}/${LADDERS.length}`, 'crowns'],
+    ];
+    $('stats-tiles').innerHTML = tiles.map(([v, label]) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`).join('');
+    const rows = LADDERS.flatMap((l) => l.rungs).flatMap(({ rival: id }) => {
+      const rec = career.results[id];
+      const r = rivalById(id)!;
+      if (!rec) return [];
+      return [`<tr><td>${r.emoji} ${escapeHtml(r.name)}</td><td>${rec.wins}–${rec.losses}${rec.ties ? `–${rec.ties}` : ''}</td><td>${stars(rec.stars)}</td></tr>`];
+    });
+    $('stats-h2h').innerHTML = rows.length ? rows.join('') : '<tr><td>Play a career match to start your record.</td></tr>';
+    showScreen('careerstats');
   }
 
   /** The end credits, after winning the Golden Pin. */
@@ -904,7 +954,7 @@ async function start() {
         leaders.length > 1 ? "It's a tie!" : mode === 'cpu' && leaders[0] === 0 ? 'You win! 🍅' : `${match.players[leaders[0]].name} wins!`;
       body.innerHTML = `<ul class="results">${order
         .map((r) => `<li class="${leaders.includes(r.i) ? 'win' : ''}"><span>${escapeHtml(r.name)}</span><span>${r.score}</span></li>`)
-        .join('')}</ul>${unlockNote}`;
+        .join('')}</ul>${mode === 'cpu' && rival ? rivalQuote(rival, totals[0] > totals[1], totals[0] === totals[1]) : ''}${unlockNote}`;
     }
     showScreen('gameover');
   }
@@ -1116,6 +1166,7 @@ async function start() {
       else if (go === 'practice') startGame('practice');
       else if (go === 'rivals') openRivals();
       else if (go === 'career') openCareer();
+      else if (go === 'careerstats') openStats();
       else if (go === 'setup') {
         playerSetup.load();
         showScreen('setup');
@@ -1338,6 +1389,7 @@ async function start() {
   /** The computer rival's turn: size up the pins, step into place, then bowl. */
   function updateCpu(dt: number) {
     if (!rival || !match) return;
+    if (rushing) cpuTimer = Math.min(cpuTimer, 0.15);
     cpuTimer -= dt;
     if (cpuTimer > 0) return;
     if (!cpuThrow) {
@@ -1393,13 +1445,17 @@ async function start() {
       }
       if (!daveComments) {
         // A quiet ball: a look at the pins, then straight on
-        if (resultTime > QUIET_PAUSE) nextAfterResult();
+        if (resultTime > (rushing ? 0.35 : QUIET_PAUSE)) nextAfterResult();
         return;
       }
       if (resultTime >= REACTION_AT && !reactionShown) {
         reactionShown = true;
         dave.react(reaction);
-        speech.show(speaker ? pickLine(reaction, Math.random, speaker.lines, speaker.id) : pickLine(reaction));
+        speech.show(
+          speaker
+            ? pickLine(reaction, Math.random, speaker.lines, speaker.id)
+            : ((mode === 'cpu' && rival ? pickVsLine(reaction, rival.name) : null) ?? pickLine(reaction)),
+        );
       }
       if (resultTime > RESULT_PAUSE) nextAfterResult();
     }
@@ -1429,6 +1485,7 @@ async function start() {
     updatePhase(gameDt);
     ffBtn.hidden = !(openScreen === null && (phase === 'rolling' || phase === 'settling'));
     replayBtn.hidden = !(openScreen === null && phase === 'result' && lastReplay !== null);
+    skipBtn.hidden = !(openScreen === null && cpuTurn() && !rushing);
     if (phase === 'aiming' || phase === 'charging' || phase === 'sweeping') dave.setStance(aimX - DAVE_OFFSET_X, DAVE_Z);
     // Dave keeps moving in the menus (he waves), but freezes mid-move on the pause screen
     dave.update(openScreen === 'pause' ? 0 : dt);

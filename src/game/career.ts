@@ -2,7 +2,7 @@
 // match, and the save. No graphics here, so it's all unit tested.
 import type { LaneConditions } from './physics';
 import type { RivalId } from './rivals';
-import { scoreFrames } from './scoring';
+import { position, scoreFrames } from './scoring';
 
 export interface Rung {
   rival: RivalId;
@@ -126,7 +126,32 @@ export interface CareerSave {
    * they were bowled (replaying them through a Match puts it back exactly where it was).
    */
   inProgress?: { rival: RivalId; frames: number; log: number[] };
+  /** Your numbers across every career match (added after launch, so older saves start at zero). */
+  stats?: CareerStats;
 }
+
+export interface CareerStats {
+  matches: number;
+  wins: number;
+  /** Full 10-frame games: how many, total score (for the average), best score. */
+  games10: number;
+  pins10: number;
+  best10: number;
+  /** Best in a 5-frame match. */
+  best5: number;
+  strikes: number;
+  /** First balls at a full rack. */
+  strikeChances: number;
+  spares: number;
+  /** Balls at a leave (pins left standing). */
+  spareChances: number;
+  splitsConverted: number;
+}
+
+export const NO_STATS: CareerStats = {
+  matches: 0, wins: 0, games10: 0, pins10: 0, best10: 0, best5: 0,
+  strikes: 0, strikeChances: 0, spares: 0, spareChances: 0, splitsConverted: 0,
+};
 
 export const NEW_CAREER: CareerSave = { version: 1, results: {} };
 
@@ -134,7 +159,7 @@ export const NEW_CAREER: CareerSave = { version: 1, results: {} };
 export function loadCareer(raw: unknown): CareerSave {
   const s = raw as Partial<CareerSave> | null;
   if (!s || s.version !== 1 || typeof s.results !== 'object' || s.results === null) return { ...NEW_CAREER, results: {} };
-  return { version: 1, results: { ...s.results }, inProgress: s.inProgress };
+  return { version: 1, results: { ...s.results }, inProgress: s.inProgress, stats: s.stats ? { ...NO_STATS, ...s.stats } : undefined };
 }
 
 export const beaten = (save: CareerSave, rival: RivalId) => (save.results[rival]?.wins ?? 0) > 0;
@@ -197,7 +222,43 @@ export function recordResult(save: CareerSave, rival: RivalId, you: number, them
   else if (you < them) r.losses++;
   else r.ties++;
   r.stars = Math.max(r.stars, stars);
-  return { version: 1, results: { ...save.results, [rival]: r } };
+  return { version: 1, results: { ...save.results, [rival]: r }, stats: save.stats };
+}
+
+/** Strikes and spares in one game, and how many chances there were at each. */
+export function ballStats(rolls: number[], frames: number) {
+  const out = { strikes: 0, strikeChances: 0, spares: 0, spareChances: 0 };
+  for (let i = 0; i < rolls.length; i++) {
+    const pos = position(rolls.slice(0, i), frames);
+    if (pos.fresh) {
+      out.strikeChances++;
+      if (rolls[i] === 10) out.strikes++;
+    } else {
+      out.spareChances++;
+      if (rolls[i] === pos.standing) out.spares++;
+    }
+  }
+  return out;
+}
+
+/** Adds a finished match to your career numbers. */
+export function addMatchStats(save: CareerSave, rolls: number[], frames: number, won: boolean, splitsConverted: number): CareerSave {
+  const s = { ...NO_STATS, ...save.stats };
+  const score = scoreFrames(rolls, frames).total;
+  const balls = ballStats(rolls, frames);
+  s.matches++;
+  if (won) s.wins++;
+  if (frames === 10) {
+    s.games10++;
+    s.pins10 += score;
+    s.best10 = Math.max(s.best10, score);
+  } else s.best5 = Math.max(s.best5, score);
+  s.strikes += balls.strikes;
+  s.strikeChances += balls.strikeChances;
+  s.spares += balls.spares;
+  s.spareChances += balls.spareChances;
+  s.splitsConverted += splitsConverted;
+  return { ...save, stats: s };
 }
 
 /** Total stars across a ladder (out of 3 per rung). */
