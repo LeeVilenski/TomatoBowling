@@ -83,11 +83,26 @@ export const OUTFITS: Record<string, Outfit> = {
   tracksuit: { suit: TRACK.green, pattern: 'tracksuit', shirt: false, shoes: '#f4f4f4' },
   // The champion's prize for topping the Tomato Dave's ladder
   blazer: { suit: '#7a1414', bowTie: true, shirt: true, shoes: '#0a0a0a' },
+  glitter: { suit: '#9b3cc7', tie: '#ffe03c', shirt: true, shoes: '#f4f4f4' },
+  goldsuit: { suit: '#d4a017', tie: '#7a1414', shirt: true, shoes: '#3a2210' },
   // Computer rivals' colours (they bowl in Dave's body until they get heads of their own)
   'rival-pickle': { suit: '#5c7a2a', tie: '#e8d44d', shirt: true, shoes: '#3a2a12' },
   'rival-donut': { suit: '#e06fa3', tie: '#7a3b1e', shirt: true, shoes: '#f4f4f4' },
   'rival-sandy': { suit: '#c9a26b', tie: '#3fae3a', shirt: true, shoes: '#5a2e14' },
   'rival-carl': { suit: '#e07a1f', tie: '#2f8f2a', shirt: true, shoes: '#1a1210' },
+  'rival-chip': { suit: '#2a3b4f', tie: '#36c8ff', shirt: true, shoes: '#111111' },
+  'rival-cookie': { suit: '#7a4a24', tie: '#f4efe2', shirt: true, shoes: '#3a2210' },
+  'rival-wafer': { suit: '#c9b08a', tie: '#3a5a8a', shirt: true, shoes: '#5a2e14' },
+  'rival-brie': { suit: '#f4efe2', tie: '#1a3a6b', shirt: true, shoes: '#1a1210' },
+  'rival-jelly': { suit: '#ff3cc7', tie: '#ffe03c', shirt: true, shoes: '#f4f4f4' },
+  'rival-mango': { suit: '#2a8a6b', tie: '#ffa83a', shirt: true, shoes: '#1a1210' },
+  'rival-lemon': { suit: '#3a2a6b', bowTie: true, shirt: true, shoes: '#f4f4f4' },
+  'rival-annie': { suit: '#c0c0d0', tie: '#7a2a8a', shirt: true, shoes: '#2a0a2e' },
+  'rival-sunny': { suit: '#ff9a3a', tie: '#fbf7ee', shirt: true, shoes: '#5a2e14' },
+  'rival-lolly': { suit: '#36a6d9', tie: '#ff5a3a', shirt: true, shoes: '#f4f4f4' },
+  'rival-kiwi': { suit: '#2f5a1e', tie: '#b6e05a', shirt: true, shoes: '#3a2210' },
+  'rival-russet': { suit: '#4a3a2a', tie: '#c8281e', shirt: true, shoes: '#1a1210' },
+  'rival-pumpkin': { suit: '#2a1040', bowTie: true, shirt: true, shoes: '#0a0a0a' },
 };
 
 type Fabric = 'limb' | 'body';

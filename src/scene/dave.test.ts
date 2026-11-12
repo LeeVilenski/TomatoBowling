@@ -30,7 +30,6 @@ async function clearance(head: HeadId, start: (d: import('./dave').Dave) => void
     [-0.32, 0.055],
   ];
   const p = new THREE.Vector3();
-  const minR = Math.min(b.rx, b.ry, b.rz);
   let worst = Infinity;
   for (let i = 0; i < seconds * 60; i++) {
     d.update(1 / 60);
@@ -39,9 +38,12 @@ async function clearance(head: HeadId, start: (d: import('./dave').Dave) => void
       for (const [y, r] of forearm) {
         arms[side].elbow.localToWorld(p.set(0, y, 0));
         pivot.worldToLocal(p); // head space (the head turns and tilts with this)
-        // How far outside the head's enclosing ellipsoid, roughly in metres
-        const k = Math.hypot(p.x / b.rx, (p.y - b.y) / b.ry, p.z / b.rz);
-        worst = Math.min(worst, (k - 1) * minR - r);
+        // How far outside the head's enclosing ellipsoid, in metres: the first-order distance
+        // (k - 1) / |∇k|, which holds up for flat heads (a cookie) as well as round ones
+        const dy = p.y - b.y;
+        const k = Math.hypot(p.x / b.rx, dy / b.ry, p.z / b.rz);
+        const grad = Math.hypot(p.x / b.rx ** 2, dy / b.ry ** 2, p.z / b.rz ** 2) / k;
+        worst = Math.min(worst, (k - 1) / grad - r);
       }
     }
   }

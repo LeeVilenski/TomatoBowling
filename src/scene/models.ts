@@ -90,6 +90,9 @@ export const BALL_STYLES: Record<string, BallStyle> = {
   green: { colour: '#7cc43a', radius: BALL_RADIUS, roughness: 0.25, metalness: 0.0, leaf: '#1f6b1c' },
   heirloom: { colour: '#e0261b', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.05, leaf: '#2f8f2a', stripes: ['#d9361a', '#ffb02e', '#8bbf3a'] },
   golden: { colour: '#ffcc3a', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.7, leaf: '#c99a1e', glow: '#4a3300' },
+  // Career rewards
+  circuit: { colour: '#1f6b34', radius: BALL_RADIUS, roughness: 0.3, metalness: 0.35, leaf: '#d4a017', stripes: ['#1a5a2c', '#d4a017', '#0f3d1e'], glow: '#06200e' },
+  sunset: { colour: '#ff8a4c', radius: BALL_RADIUS, roughness: 0.18, metalness: 0.1, leaf: '#2f8f2a', stripes: ['#ff8a4c', '#c8406a', '#ffd23a'] },
 };
 
 /** A bowling ball made to look like a tomato: soft lobes, a leafy top and a stalk. */

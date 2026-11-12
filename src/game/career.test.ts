@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { STANDARD_LANE } from './physics';
+import { RIVALS } from './rivals';
 import {
   HOME_LADDER,
+  isLadderOpen,
+  LADDERS,
+  ladderOf,
+  laneFor,
+  metRivals,
   hadTurkey,
   isChampion,
   isUnlocked,
@@ -95,5 +102,40 @@ describe('resuming a match', () => {
     expect(resumed.players.map((p) => p.rolls)).toEqual(live.players.map((p) => p.rolls));
     expect(resumed.current).toBe(live.current);
     expect(resumed.position).toEqual(live.position);
+  });
+});
+
+describe('the whole career', () => {
+  it('has five venues, every rival in exactly one, each topped by a champion', () => {
+    expect(LADDERS.map((l) => l.id)).toEqual(['classic', 'server', 'disco', 'rooftop', 'golden']);
+    const all = LADDERS.flatMap((l) => l.rungs.map((r) => r.rival));
+    expect(new Set(all).size).toBe(RIVALS.length);
+    expect(all.sort()).toEqual(RIVALS.map((r) => r.id).sort());
+    for (const l of LADDERS) expect(l.rungs[l.rungs.length - 1].champion).toBe(true);
+    // Full games from the second venue on
+    expect(LADDERS.slice(1).every((l) => l.rungs.every((r) => r.frames === 10))).toBe(true);
+    expect(ladderOf('pumpkin').id).toBe('golden');
+  });
+
+  it('opens each venue once you are champion of the one before', () => {
+    let save = NEW_CAREER;
+    expect(LADDERS.map((_, i) => isLadderOpen(save, i))).toEqual([true, false, false, false, false]);
+    for (const r of HOME_LADDER) save = recordResult(save, r.rival, 100, 90, 1);
+    expect(isLadderOpen(save, 1)).toBe(true);
+    expect(isLadderOpen(save, 2)).toBe(false);
+    expect(metRivals(save)).toEqual(['pickle', 'donut', 'sandy', 'carl', 'chip', 'cookie', 'wafer', 'brie']);
+  });
+
+  it('plays each venue under its own lane rule', () => {
+    const [classic, server, disco, rooftop, golden] = LADDERS;
+    expect(laneFor(classic, STANDARD_LANE)).toEqual(STANDARD_LANE);
+    expect(laneFor(server, STANDARD_LANE).oilEnd).toBeLessThan(STANDARD_LANE.oilEnd); // oil runs further
+    expect(laneFor(golden, STANDARD_LANE).oilEnd).toBeGreaterThan(STANDARD_LANE.oilEnd); // dry lanes
+    expect(laneFor(disco, STANDARD_LANE).pinBounce).toBeGreaterThan(STANDARD_LANE.pinBounce);
+    const winds = [0, 0.25, 0.5, 0.99].map((r) => laneFor(rooftop, STANDARD_LANE, () => r).wind);
+    expect(winds[0]).toBeLessThan(0);
+    expect(winds[3]).toBeGreaterThan(0);
+    expect(Math.max(...winds.map(Math.abs))).toBeLessThanOrEqual(rooftop.rule!.breeze!);
+    expect(winds.every((w) => w !== 0)).toBe(true); // never perfectly still up there
   });
 });

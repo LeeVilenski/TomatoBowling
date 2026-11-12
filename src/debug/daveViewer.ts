@@ -1,13 +1,14 @@
 // Dev-only page (debug-dave.html): shows Dave in each pose so the model can be checked.
 import * as THREE from 'three';
 import { Dave } from '../scene/dave';
-import type { HeadId } from '../scene/heads';
+import { HEADS, type HeadId } from '../scene/heads';
 import type { ReactionKind } from '../game/reactions';
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') ?? 'front';
 const outfit = params.get('outfit');
-// ?head=pickle (or donut, sandwich, carrot) shows a rival's head; ?head=all lines them all up
+// ?head=pickle (or any head id) shows a rival's head; ?head=all mixes them across the poses;
+// ?head=lineup stands every head side by side
 const head = params.get('head');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -24,14 +25,16 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), new THREE.MeshStan
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 
-const states: (string)[] = ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
+const allHeads = Object.keys(HEADS) as HeadId[];
+const states: string[] =
+  head === 'lineup' ? allHeads.map(() => 'idle') : ['idle', 'charge', 'swing-release', 'follow', 'strike', 'spare', 'good', 'meh', 'gutter', 'split', 'wave'];
 const daves = states.map((s, i) => {
   const d = new Dave();
   if (outfit) d.setOutfit(outfit);
-  const heads: HeadId[] = ['tomato', 'pickle', 'donut', 'sandwich', 'carrot'];
-  if (head === 'all') d.setHead(heads[i % heads.length]);
+  if (head === 'lineup') d.setHead(allHeads[i]);
+  else if (head === 'all') d.setHead(allHeads[i % allHeads.length]);
   else if (head) d.setHead(head as HeadId);
-  d.setStance((i - (states.length - 1) / 2) * 0.9, 0);
+  d.setStance((i - (states.length - 1) / 2) * (head === 'lineup' ? 0.6 : 0.9), 0);
   scene.add(d.root);
   if (s === 'charge') d.charge(0.8);
   else if (s === 'swing-release') d.swing(() => {});

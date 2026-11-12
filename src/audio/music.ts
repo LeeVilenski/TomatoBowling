@@ -6,8 +6,9 @@
 //   chip   — "Packet Loss": 8-bit chiptune with fast arpeggios (Server Room Lanes)
 //   disco  — "Disco Dave": four-on-the-floor, octave bass and string pads (Disco Inferno)
 //   bossa  — "Bossa Marinara": bossa nova guitar, rim clave and flute (Rooftop at Sunset)
+//   golden — "Golden Glory": a grand big-band swing in B♭ for the career final (The Golden Pin)
 
-export type TrackId = 'lounge' | 'chip' | 'disco' | 'bossa';
+export type TrackId = 'lounge' | 'chip' | 'disco' | 'bossa' | 'golden';
 
 type Inst =
   | 'bass' | 'epiano' | 'vibes' | 'ride' | 'hat' | 'brush'
@@ -227,7 +228,54 @@ function bossa(): Track {
   return { id: 'bossa', name: 'Bossa Marinara', bpm: 128, beats: beat, level: 0.9, events: ev };
 }
 
-const TRACKS: Record<TrackId, Track> = { lounge: lounge(), chip: chip(), disco: disco(), bossa: bossa() };
+// ---------- Track 5: Golden Glory (big-band swing in B♭) ----------
+function golden(): Track {
+  // MIDI: B♭2=46 G2=43 C3=48 F2=41 E♭3=51 D3=50
+  // A rising, triumphant form: I – VI7 – ii – V, then up to IV, a turnaround and a big finish
+  const form = [
+    C(46, 'maj7'), C(43, 'dom7'), C(48, 'm7'), C(41, 'dom7'),
+    C(50, 'm7'), C(43, 'dom7'), C(48, 'm7'), C(41, 'dom7'),
+    C(51, 'maj7'), C(51, 'm6'), C(46, 'maj7', 2), C(43, 'dom7', 2), C(48, 'm7', 2), C(41, 'dom7', 2),
+    C(46, 'maj7'), C(43, 'dom7'), C(48, 'm7'), C(41, 'dom7'),
+  ];
+  const ev: Ev[] = [];
+  const rand = seeded(2024);
+  let beat = 0;
+  form.forEach((ch, idx) => {
+    const next = form[(idx + 1) % form.length];
+    const tones = TONES[ch.q].map((t) => ch.root + t);
+    // Walking bass
+    for (let b = 0; b < ch.beats; b++) {
+      let n = b === 0 ? ch.root : b === ch.beats - 1 ? next.root + (rand() < 0.5 ? 1 : -1) : tones[1 + Math.floor(rand() * 3)];
+      if (n > 52) n -= 12;
+      ev.push({ beat: beat + b, inst: 'bass', midi: n, dur: 0.9, vel: b === 0 ? 1 : 0.85 });
+    }
+    // Big "horn section" hits on the pad: on the one and pushed ahead of three
+    const v = voice(ch, 58, 76);
+    ev.push({ beat, inst: 'pad', notes: v, dur: ch.beats === 4 ? 1.4 : 0.9, vel: 0.9 });
+    if (ch.beats === 4) ev.push({ beat: beat + 2 + SWING, inst: 'pad', notes: v, dur: 0.9, vel: 0.8 });
+    ev.push({ beat: beat + 1 + SWING, inst: 'epiano', notes: voice(ch, 55, 70), dur: 0.4, vel: 0.6 });
+    // A soaring flute line over every other bar, vibes answering
+    if (ch.beats === 4 && idx % 2 === 0) phrase(ch, beat, [0, 1, 1 + SWING, 2, 3], rand, 70, 89, 'flute', ev, 1.8);
+    else if (ch.beats === 4) phrase(ch, beat, [SWING, 1 + SWING, 2 + SWING], rand, 67, 84, 'vibes', ev, 1.2);
+    beat += ch.beats;
+  });
+  // Swing ride, hi-hat on two and four, a kick on the one and a snare fill at the end
+  for (let k = 0; k < beat * 3; k++) {
+    const pos = k % 3;
+    const b = Math.floor(k / 3);
+    const t = k / 3;
+    if (pos === 0) {
+      ev.push({ beat: t, inst: 'ride', dur: 0.5, vel: b % 2 === 0 ? 1 : 0.85 });
+      if (b % 2 === 1) ev.push({ beat: t, inst: 'hat', dur: 0.1, vel: 1 });
+      if (b % 4 === 0) ev.push({ beat: t, inst: 'kick', dur: 0.3, vel: 0.7 });
+    } else if (pos === 2 && b % 2 === 1) ev.push({ beat: t, inst: 'ride', dur: 0.5, vel: 0.6 });
+  }
+  for (const f of [beat - 1, beat - 1 + SWING, beat - 0.5, beat - 0.5 + 1 / 6]) ev.push({ beat: f, inst: 'snare', dur: 0.2, vel: 0.8 });
+  return { id: 'golden', name: 'Golden Glory', bpm: 132, beats: beat, level: 0.85, events: ev };
+}
+
+const TRACKS: Record<TrackId, Track> = { lounge: lounge(), chip: chip(), disco: disco(), bossa: bossa(), golden: golden() };
 export const TRACK_NAMES: Record<TrackId, string> = Object.fromEntries(Object.values(TRACKS).map((t) => [t.id, t.name])) as Record<TrackId, string>;
 
 export function loopSeconds(id: TrackId) {

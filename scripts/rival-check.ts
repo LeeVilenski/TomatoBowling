@@ -1,10 +1,11 @@
-// Plays each computer bowler through simulated 10-frame games with the real physics, and
-// checks they average close to their target. Use it to tune rivals in src/game/rivals.ts.
+// Plays each computer bowler through simulated 10-frame games with the real physics, at
+// their own venue's lane conditions, and checks they average close to their target. Use it to tune rivals in src/game/rivals.ts.
 // Usage: npm run check:rivals [-- --games 40] [-- --rival carl]
 import { chooseTarget, gaussian, humanise, planThrow } from '../src/game/ai';
 import { HEAD_PIN_Z } from '../src/game/dimensions';
 import { Match } from '../src/game/match';
-import { BowlingPhysics } from '../src/game/physics';
+import { ladderOf, laneFor } from '../src/game/career';
+import { BowlingPhysics, STANDARD_LANE } from '../src/game/physics';
 import { RIVALS, type Rival } from '../src/game/rivals';
 
 const arg = (name: string) => {
@@ -78,8 +79,16 @@ async function main() {
     for (let g = 0; g < GAMES; g++) {
       const match = new Match([rival.name]);
       lane.resetPins();
+      const ladder = ladderOf(rival.id);
       while (!match.gameOver) {
         const pos = match.position;
+        if (pos.ball === 0) {
+          // Each frame at the rival's venue (a breeze changes direction every frame); the
+          // rival's planning world knows the conditions too, as the player can see them
+          const conditions = laneFor(ladder, STANDARD_LANE, random);
+          lane.setConditions(conditions);
+          tracer.setConditions(conditions);
+        }
         const pins = bowl(rival, pos.frame, random);
         if (pos.fresh) {
           firstBalls++;

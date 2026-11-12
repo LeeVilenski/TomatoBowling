@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import type { TrackId } from '../audio/music';
-import { DECK_END_Z, OUTER_HALF, PIT_END_Z } from '../game/dimensions';
+import { DECK_END_Z, OUTER_HALF, PIN_PROFILE, PIT_END_Z } from '../game/dimensions';
 import { canvasTexture, carpet, maskingPanel, maskingPart, neonSign } from './decor';
 import { scoreMonitor } from './scoreboard';
 
 // The places Tomato Dave can bowl. The lanes are the same everywhere; each venue adds its
 // own walls, ceiling, lights, signs, music and a few moving effects.
 
-export type VenueId = 'classic' | 'server' | 'disco' | 'rooftop';
+export type VenueId = 'classic' | 'server' | 'disco' | 'rooftop' | 'golden';
 
 export interface VenueInfo {
   id: VenueId;
@@ -20,6 +20,8 @@ export const VENUES: VenueInfo[] = [
   { id: 'server', name: 'Server Room Lanes', track: 'chip' },
   { id: 'disco', name: 'Disco Inferno', track: 'disco' },
   { id: 'rooftop', name: 'Rooftop at Sunset', track: 'bossa' },
+  // Career mode's final; open for free play once you've reached it
+  { id: 'golden', name: 'The Golden Pin', track: 'golden' },
 ];
 
 interface Lighting {
@@ -785,7 +787,125 @@ function rooftop(scores: THREE.Texture): Built {
   };
 }
 
-const BUILDERS: Record<VenueId, (scores: THREE.Texture) => Built> = { classic, server, disco, rooftop };
+// ---------------------------------------------------------------- The Golden Pin
+function golden(scores: THREE.Texture): Built {
+  const g = new THREE.Group();
+  const gold = std('#d4a017', { metalness: 0.85, roughness: 0.28 });
+  // Red velvet walls with a gold rail and wainscot
+  const velvet = canvasTexture(512, 512, (c) => {
+    const grd = c.createLinearGradient(0, 0, 0, 512);
+    grd.addColorStop(0, '#3a0a0e');
+    grd.addColorStop(0.55, '#6e1018');
+    grd.addColorStop(0.7, '#4a0a10');
+    c.fillStyle = grd;
+    c.fillRect(0, 0, 512, 512);
+    // Velvet pile: soft vertical folds
+    for (let x = 0; x < 512; x += 16) {
+      c.fillStyle = `rgba(0, 0, 0, ${0.08 + 0.08 * Math.sin(x / 9)})`;
+      c.fillRect(x, 0, 8, 512);
+    }
+    c.fillStyle = '#d4a017';
+    c.fillRect(0, 352, 512, 10);
+    c.fillStyle = '#2a0608';
+    c.fillRect(0, 362, 512, 150);
+    c.fillStyle = '#b8860f';
+    for (let x = 16; x < 512; x += 64) c.fillRect(x, 380, 32, 112);
+  });
+  velvet.wrapS = THREE.RepeatWrapping;
+  velvet.repeat.set(8, 1);
+  // Coffered ceiling: dark panels framed in gold
+  const coffers = canvasTexture(256, 256, (c) => {
+    c.fillStyle = '#c99a1e';
+    c.fillRect(0, 0, 256, 256);
+    c.fillStyle = '#2a0a12';
+    c.fillRect(14, 14, 228, 228);
+    c.strokeStyle = '#8a6a12';
+    c.lineWidth = 6;
+    c.strokeRect(34, 34, 188, 188);
+  });
+  coffers.wrapS = coffers.wrapT = THREE.RepeatWrapping;
+  coffers.repeat.set(4, 20);
+  // Red carpet with a gold diamond pattern
+  const rug = canvasTexture(256, 256, (c) => {
+    c.fillStyle = '#7a1018';
+    c.fillRect(0, 0, 256, 256);
+    c.strokeStyle = '#d4a017';
+    c.lineWidth = 4;
+    for (let i = -256; i < 512; i += 64) {
+      c.beginPath();
+      c.moveTo(i, 0);
+      c.lineTo(i + 256, 256);
+      c.moveTo(i + 256, 0);
+      c.lineTo(i, 256);
+      c.stroke();
+    }
+  });
+  rug.wrapS = rug.wrapT = THREE.RepeatWrapping;
+  rug.repeat.set(4, 10);
+  room(g, std('#ffffff', { map: velvet, roughness: 0.95 }), std('#ffffff', { map: coffers, roughness: 0.6 }), std('#ffffff', { map: velvet, roughness: 0.95 }), std('#ffffff', { map: rug, roughness: 0.95 }));
+  signage(g, 'THE GOLDEN PIN', '★ INVITATIONAL ★', '#ffd23a', '#fff4e6', 'LANE 1', '#d4a017', '#8a6a12', '#7a1018', '#fff1b0');
+  laneGlow(g, '#ffd23a');
+  g.add(scoreMonitor(scores, CEIL_Y));
+
+  // Gold columns down both walls
+  const columnGeo = new THREE.CylinderGeometry(0.14, 0.16, CEIL_Y, 18);
+  for (let z = 6; z > BACK_Z + 1; z -= 3.2) {
+    for (const side of [-1, 1]) {
+      const col = new THREE.Mesh(columnGeo, gold);
+      col.position.set(side * (WALL_X - 0.16), CEIL_Y / 2, z);
+      g.add(col);
+    }
+  }
+
+  // A giant golden pin on the back wall, above the sign
+  const pinPts = PIN_PROFILE.map(([r, y]) => new THREE.Vector2(r * 4, y * 4));
+  const trophy = new THREE.Mesh(new THREE.LatheGeometry(new THREE.SplineCurve(pinPts).getPoints(40), 32), gold);
+  trophy.position.set(0, 2.25, BACK_Z + 0.4);
+  g.add(trophy);
+
+  // Chandeliers: gold rings hung with glowing bulbs
+  const bulb = basic('#fff1c4');
+  const bulbGeo = new THREE.SphereGeometry(0.045, 10, 8);
+  const chandeliers = [-3, -9, -15].map((z) => {
+    const c = new THREE.Group();
+    c.position.set(0, CEIL_Y - 0.9, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.025, 8, 40), gold);
+    ring.rotation.x = Math.PI / 2;
+    c.add(ring, boxAt(0.02, 0.9, 0.02, gold, 0, 0.45, 0));
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const b = new THREE.Mesh(bulbGeo, bulb);
+      b.position.set(Math.cos(a) * 0.45, 0.05, Math.sin(a) * 0.45);
+      c.add(b);
+    }
+    g.add(c);
+    return c;
+  });
+  const glow = new THREE.PointLight('#ffd89a', 6, 9, 1.6);
+  glow.position.set(0, CEIL_Y - 1, -9);
+  g.add(glow);
+
+  return {
+    group: g,
+    update: (t) => {
+      // A gentle sway, as if a door had just opened somewhere
+      chandeliers.forEach((c, i) => (c.rotation.z = Math.sin(t * 0.6 + i) * 0.02));
+      trophy.rotation.y = t * 0.3;
+    },
+    apply: (scene, l) => {
+      scene.background = new THREE.Color('#1a0608');
+      scene.fog = new THREE.Fog('#1a0608', 20, 42);
+      l.hemi.color.set('#ffe2b0');
+      l.hemi.groundColor.set('#3a0a0e');
+      l.hemi.intensity = 1.0;
+      l.key.color.set('#fff0d0');
+      l.key.intensity = 1.6;
+      l.fill.color.set('#ffcf8a');
+    },
+  };
+}
+
+const BUILDERS: Record<VenueId, (scores: THREE.Texture) => Built> = { classic, server, disco, rooftop, golden };
 
 /** Builds venues on first use and swaps between them. */
 export class VenueManager {

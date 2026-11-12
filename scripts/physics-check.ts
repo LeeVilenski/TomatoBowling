@@ -1,6 +1,6 @@
 // Quick physics sanity check, run with `npm run check:physics`.
 // Simulates a set of throws without a browser and fails if anything looks wrong.
-import { BowlingPhysics } from '../src/game/physics';
+import { BowlingPhysics, STANDARD_LANE, type LaneConditions } from '../src/game/physics';
 import { Pinsetter } from '../src/game/pinsetter';
 import { Object3D } from 'three';
 
@@ -64,6 +64,26 @@ async function main() {
     const hooked = Math.sign(end.x - t.x - Math.sin(t.angle) * 18) === Math.sign(t.spin);
     check(miss < 0.02 && hooked, `aim preview matches the real throw (${(miss * 100).toFixed(1)} cm apart at the pins, hooks the right way)`);
   }
+
+  // Career venues change how the lane plays. The same hooking throw should hook less on long
+  // oil, more on dry lanes, and drift with a breeze.
+  const hookThrow = { x: 0.3, angle: 0, speed: 8, spin: -0.7 };
+  const endX = (c: Partial<LaneConditions>) => {
+    preview.setConditions({ ...STANDARD_LANE, ...c });
+    const path = preview.tracePath(hookThrow, -18.29);
+    return path[path.length - 1].x;
+  };
+  const standard = endX({});
+  const longOil = endX({ oilEnd: -15 });
+  const dry = endX({ oilEnd: -8.5 });
+  const breezy = endX({ wind: 0.06 });
+  preview.setConditions(STANDARD_LANE);
+  check(longOil > standard + 0.05, `long oil: the hook comes later and smaller (ends ${((longOil - standard) * 100).toFixed(0)} cm further right)`);
+  check(dry < standard - 0.05, `dry lanes: the hook comes early and big (ends ${((standard - dry) * 100).toFixed(0)} cm further left)`);
+  check(breezy > standard + 0.05 && breezy < standard + 0.4, `a breeze nudges the ball sideways (${((breezy - standard) * 100).toFixed(0)} cm)`);
+  ph.setConditions({ ...STANDARD_LANE, pinBounce: 0.62 });
+  check(ph.pins.every((p) => Math.abs(p.collider(0).restitution() - 0.62) < 1e-6), 'bouncy pins take the new springiness');
+  ph.setConditions(STANDARD_LANE);
 
   // With stem hops switched off, the lane itself must never make the ball bounce
   for (const speed of [3, 6, 8, 11]) {

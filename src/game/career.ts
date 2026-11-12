@@ -1,5 +1,6 @@
 // Career mode's rules: the ladder of rivals at each venue, what unlocks what, stars for a
 // match, and the save. No graphics here, so it's all unit tested.
+import type { LaneConditions } from './physics';
 import type { RivalId } from './rivals';
 import { scoreFrames } from './scoring';
 
@@ -10,6 +11,31 @@ export interface Rung {
   champion?: boolean;
 }
 
+/** Each career venue changes one thing about how its lane plays. */
+export interface LaneRule {
+  name: string;
+  emoji: string;
+  blurb: string;
+  /** Where the oil ends (see LaneConditions). */
+  oilEnd?: number;
+  /** How springy the pins are. */
+  pinBounce?: number;
+  /** A breeze up to this strength (m/s²), blowing a new way each frame. */
+  breeze?: number;
+}
+
+export interface Ladder {
+  /** Also the venue it's played at. */
+  id: 'classic' | 'server' | 'disco' | 'rooftop' | 'golden';
+  name: string;
+  emoji: string;
+  rule: LaneRule | null;
+  /** Bottom rung first; the champion is last. */
+  rungs: Rung[];
+  /** The Wardrobe item for becoming this venue's champion. */
+  reward: string;
+}
+
 /** Tomato Dave's, bottom rung first. */
 export const HOME_LADDER: Rung[] = [
   { rival: 'pickle', frames: 5 },
@@ -17,6 +43,72 @@ export const HOME_LADDER: Rung[] = [
   { rival: 'sandy', frames: 5 },
   { rival: 'carl', frames: 10, champion: true },
 ];
+
+const full = (rivals: RivalId[]): Rung[] => rivals.map((rival, i) => ({ rival, frames: 10, champion: i === rivals.length - 1 }));
+
+/** The whole career, venue by venue. Each ladder opens once you're the previous venue's champion. */
+export const LADDERS: Ladder[] = [
+  { id: 'classic', name: "Tomato Dave's", emoji: '🍅', rule: null, rungs: HOME_LADDER, reward: 'blazer' },
+  {
+    id: 'server',
+    name: 'Server Room Lanes',
+    emoji: '🖥️',
+    rule: { name: 'Long oil', emoji: '🛢️', blurb: 'The oil runs further down the lane, so the hook comes late and small.', oilEnd: -15 },
+    rungs: full(['chip', 'cookie', 'wafer', 'brie']),
+    reward: 'circuit',
+  },
+  {
+    id: 'disco',
+    name: 'Disco Inferno',
+    emoji: '🪩',
+    rule: { name: 'Bouncy pins', emoji: '🎳', blurb: 'Extra-springy pins: more of them fly, and more of them fly back.', pinBounce: 0.62 },
+    rungs: full(['jelly', 'mango', 'lemon', 'annie']),
+    reward: 'glitter',
+  },
+  {
+    id: 'rooftop',
+    name: 'Rooftop at Sunset',
+    emoji: '🌇',
+    rule: { name: 'Breezy', emoji: '🌬️', blurb: 'A breeze blows across the lane, a different way each frame. Check it before you throw.', breeze: 0.07 },
+    rungs: full(['sunny', 'lolly', 'kiwi', 'russet']),
+    reward: 'sunset',
+  },
+  {
+    id: 'golden',
+    name: 'The Golden Pin',
+    emoji: '🏆',
+    rule: { name: 'Dry lanes', emoji: '🏜️', blurb: 'Hardly any oil: the ball grips early and hooks hard.', oilEnd: -8.5 },
+    rungs: full(['pumpkin']),
+    reward: 'goldsuit',
+  },
+];
+
+/** Which ladder a rival belongs to. */
+export function ladderOf(rival: RivalId): Ladder {
+  return LADDERS.find((l) => l.rungs.some((r) => r.rival === rival)) ?? LADDERS[0];
+}
+
+/** A ladder is open once you're champion of the one before it. */
+export function isLadderOpen(save: CareerSave, index: number): boolean {
+  return index === 0 || isChampion(save, LADDERS[index - 1].rungs);
+}
+
+/**
+ * The lane for a match at this ladder's venue. With a breeze, call it again each frame:
+ * `random` picks the new wind (0–1), rounded so it's easy to read.
+ */
+export function laneFor(ladder: Ladder, standard: LaneConditions, random: () => number = Math.random): LaneConditions {
+  const r = ladder.rule;
+  const lane = { ...standard };
+  if (r?.oilEnd !== undefined) lane.oilEnd = r.oilEnd;
+  if (r?.pinBounce !== undefined) lane.pinBounce = r.pinBounce;
+  if (r?.breeze) {
+    // Rounded to make it easy to read, but never quite still: up here there's always a breeze
+    const raw = random() * 2 - 1;
+    lane.wind = Math.round(raw * r.breeze * 100) / 100 || (raw < 0 ? -0.01 : 0.01);
+  }
+  return lane;
+}
 
 export interface RungRecord {
   wins: number;
@@ -111,4 +203,9 @@ export function recordResult(save: CareerSave, rival: RivalId, you: number, them
 /** Total stars across a ladder (out of 3 per rung). */
 export function totalStars(save: CareerSave, ladder = HOME_LADDER): number {
   return ladder.reduce((n, r) => n + (save.results[r.rival]?.stars ?? 0), 0);
+}
+
+/** Rivals you can play in a quick vs CPU match: everyone at the venues you've reached. */
+export function metRivals(save: CareerSave): RivalId[] {
+  return LADDERS.flatMap((l, i) => (isLadderOpen(save, i) ? l.rungs.map((r) => r.rival) : []));
 }

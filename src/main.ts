@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './style.css';
 import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, MAX_AIM_ANGLE, MAX_START_X, MAX_THROW_SPEED, MIN_THROW_SPEED, OUTER_HALF } from './game/dimensions';
-import { BowlingPhysics, PHYSICS_DT } from './game/physics';
+import { BowlingPhysics, PHYSICS_DT, STANDARD_LANE, type LaneConditions } from './game/physics';
 import { Match, type RollOutcome } from './game/match';
 import { Pinsetter, type PinsetterMode } from './game/pinsetter';
 import { ReplayRecorder, type Replay, type ReplayEvent } from './game/replay';
@@ -22,7 +22,7 @@ import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
 import { chooseTarget, humanise, planThrow, pressureFor } from './game/ai';
 import { RIVALS, rivalById, type Rival } from './game/rivals';
-import { HOME_LADDER, isChampion, isUnlocked, loadCareer, nextRung, recordResult, starsFor, totalStars, type Rung } from './game/career';
+import { isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
 import { FRAMES } from './game/scoring';
 import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
@@ -152,19 +152,32 @@ async function start() {
   const juice = new Juice(scene);
   const speech = new SpeechBubble($('speech'));
   const sound = new Sound();
+  // Career mode's save (read early: it decides which venues are open)
+  let career = loadCareer(storage.career());
   // Venue: where Dave bowls (each has its own look and music)
-  function selectVenue(id: VenueId) {
+  /**
+   * Shows a venue. `remember` makes it the venue for free play (career matches visit their
+   * own venue without changing that).
+   */
+  function selectVenue(id: VenueId, remember = true) {
     venues.select(id);
     scoreboard.setTheme(id);
     sound.setTrack(venues.current.track);
-    storage.saveText('venue', id);
+    if (remember) {
+      preferredVenue = id;
+      storage.saveText('venue', id);
+    }
     $('venue-name').textContent = `📍 ${venues.current.name}`;
   }
+  /** Venues you can pick for free play: the Golden Pin once you've reached the career final. */
+  const venueOpen = (id: VenueId) => id !== 'golden' || isLadderOpen(career, LADDERS.findIndex((l) => l.id === 'golden'));
   const savedVenue = storage.text('venue', 'classic') as VenueId;
-  selectVenue(VENUES.some((v) => v.id === savedVenue) ? savedVenue : 'classic');
+  let preferredVenue: VenueId = 'classic';
+  selectVenue(VENUES.some((v) => v.id === savedVenue) && venueOpen(savedVenue) ? savedVenue : 'classic');
   const stepVenue = (dir: number) => {
-    const i = VENUES.findIndex((v) => v.id === venues.current.id);
-    selectVenue(VENUES[(i + dir + VENUES.length) % VENUES.length].id);
+    const open = VENUES.filter((v) => venueOpen(v.id));
+    const i = open.findIndex((v) => v.id === venues.current.id);
+    selectVenue(open[(i + dir + open.length) % open.length].id);
   };
   $('venue-prev').addEventListener('click', () => stepVenue(-1));
   $('venue-next').addEventListener('click', () => stepVenue(1));
@@ -257,7 +270,8 @@ async function start() {
   // Career mode: the rung being played (null outside career), the save, and every ball
   // bowled in this match in order (saved so a match can be picked up later)
   let careerRung: Rung | null = null;
-  let career = loadCareer(storage.career());
+  /** The venue ladder the career match belongs to (null outside career). */
+  let careerLadder: Ladder | null = null;
   let matchLog: number[] = [];
   let cpuTimer = 0;
   let cpuThrow: ThrowParams | null = null;
@@ -443,6 +457,8 @@ async function start() {
     if (careerRung && pos.ball === 0 && !match.gameOver) {
       career = { ...career, inProgress: { rival: careerRung.rival, frames: match.frames, log: [...matchLog] } };
       storage.saveCareer(career);
+      // A new frame on the Rooftop brings a new breeze
+      if (careerLadder?.rule?.breeze) applyLane(laneFor(careerLadder, STANDARD_LANE));
     }
     if (mode === 'cpu' && rival) {
       // The rival bowls in Dave's body, wearing its own head and suit
@@ -531,6 +547,8 @@ async function start() {
     $('practice-panel').hidden = !(id === null && mode === 'practice');
     legend.hidden = !(id === null && mode === 'practice');
     if (id === 'menu') {
+      if (venues.current.id !== preferredVenue) selectVenue(preferredVenue, false);
+      if (lane !== STANDARD_LANE) applyLane(STANDARD_LANE);
       scoreboard.showIdle();
       // Dave hosts the menu as himself, even if a rival was mid-turn
       dave.setHead('tomato');
@@ -543,6 +561,22 @@ async function start() {
     }
   }
 
+  // ---- Lane conditions (career venues change how the lane plays) ----
+  let lane: LaneConditions = STANDARD_LANE;
+  const windEl = $('wind');
+  function applyLane(c: LaneConditions) {
+    lane = c;
+    physics.setConditions(c);
+    predictor?.setConditions(c);
+    // The breeze: which way, and how hard
+    windEl.hidden = c.wind === 0;
+    if (c.wind !== 0) {
+      const strength = Math.abs(c.wind) < 0.025 ? 'light' : Math.abs(c.wind) < 0.05 ? 'steady' : 'strong';
+      const arrows = (c.wind < 0 ? '←' : '→').repeat(strength === 'light' ? 1 : strength === 'steady' ? 2 : 3);
+      windEl.textContent = `🌬️ ${strength[0].toUpperCase() + strength.slice(1)} breeze ${arrows} blowing ${c.wind < 0 ? 'left' : 'right'}`;
+    }
+  }
+
   /**
    * Clears the lane and starts a new game in the chosen mode. `frames` is the match length;
    * `rung` makes it a career match. `log` replays balls already bowled (resuming a match).
@@ -551,6 +585,10 @@ async function start() {
     endReplay();
     mode = newMode;
     careerRung = rung;
+    careerLadder = rung ? ladderOf(rung.rival) : null;
+    // Career matches are played at their ladder's venue, under its lane rule
+    selectVenue(careerLadder ? (careerLadder.id as VenueId) : preferredVenue, false);
+    applyLane(careerLadder ? laneFor(careerLadder, STANDARD_LANE) : STANDARD_LANE);
     cpuThrow = null;
     dave.setOutfit(equipped.suit);
     dave.setHead('tomato');
@@ -604,7 +642,9 @@ async function start() {
     const list = $('rival-list');
     const record = storage.vsRecord();
     list.innerHTML = '';
-    for (const r of RIVALS) {
+    // Everyone at the venues you've reached in career mode
+    const met = metRivals(career);
+    for (const r of RIVALS.filter((x) => met.includes(x.id))) {
       const b = document.createElement('button');
       b.className = 'rival';
       const rec = record[r.id];
@@ -613,6 +653,12 @@ async function start() {
       }`;
       b.addEventListener('click', () => startCpu(r.id));
       list.append(b);
+    }
+    if (met.length < RIVALS.length) {
+      const more = document.createElement('p');
+      more.className = 'small';
+      more.textContent = `🔒 ${RIVALS.length - met.length} more rivals to meet in 🪜 Career.`;
+      list.append(more);
     }
     showScreen('rivals');
   }
@@ -624,74 +670,98 @@ async function start() {
     startGame('cpu', ['You', r.name]);
   }
 
-  // ---- Career: the ladder, the match intro and the result card ----
+  // ---- Career: the ladders, the match intro, the result card and the credits ----
   const stars = (n: number) => `${'⭐'.repeat(n)}<span class="off">${'⭐'.repeat(3 - n)}</span>`;
+  const ruleText = (r: LaneRule | null) => (r ? `${r.emoji} ${r.name}: ${r.blurb}` : '🍅 The home lane: no surprises.');
 
-  function openCareer() {
+  /** The ladder to show first: the furthest one you've reached. */
+  function currentLadder() {
+    let i = 0;
+    while (i + 1 < LADDERS.length && isLadderOpen(career, i + 1)) i++;
+    return i;
+  }
+
+  let viewLadder = 0;
+  function openCareer(index = currentLadder()) {
+    viewLadder = index;
+    const l = LADDERS[index];
+    const open = isLadderOpen(career, index);
+    $('ladder-title').textContent = `${l.emoji} ${l.name}`;
+    $('ladder-rule').textContent = open ? ruleText(l.rule) : `🔒 Become champion of ${LADDERS[index - 1].name} to open.`;
+    ($('ladder-prev') as HTMLButtonElement).disabled = index === 0;
+    ($('ladder-next') as HTMLButtonElement).disabled = index === LADDERS.length - 1;
     const ladder = $('ladder');
     ladder.innerHTML = '';
-    const next = nextRung(career);
+    const next = nextRung(career, l.rungs);
     // Top rung (the champion) first, like a poster
-    for (let i = HOME_LADDER.length - 1; i >= 0; i--) {
-      const rung = HOME_LADDER[i];
+    for (let i = l.rungs.length - 1; i >= 0; i--) {
+      const rung = l.rungs[i];
       const r = rivalById(rung.rival)!;
       const rec = career.results[rung.rival];
-      const open = isUnlocked(career, i);
+      const unlocked = open && isUnlocked(career, i, l.rungs);
       const li = document.createElement('li');
       const b = document.createElement('button');
-      b.className = `rung${open ? '' : ' locked'}${i === next ? ' next' : ''}`;
-      b.disabled = !open;
-      const record = rec ? ` · won ${rec.wins}, lost ${rec.losses}` : '';
-      b.innerHTML = `<span class="remoji">${open ? r.emoji : '🔒'}</span><span class="rname">${escapeHtml(r.name)}${
+      b.className = `rung${unlocked ? '' : ' locked'}${open && i === next ? ' next' : ''}`;
+      b.disabled = !unlocked;
+      const record = rec ? ` · ${rec.wins}–${rec.losses}` : '';
+      const lockedWhy = () => (!open ? 'Venue locked' : `Beat ${escapeHtml(rivalById(l.rungs[i - 1].rival)!.name)} to unlock`);
+      b.innerHTML = `<span class="remoji">${unlocked ? r.emoji : '🔒'}</span><span class="rname">${unlocked ? escapeHtml(r.name) : '???'}${
         rung.champion ? '<span class="tag">CHAMPION</span>' : ''
       }</span><span class="rgot" aria-label="${rec?.stars ?? 0} of 3 stars">${stars(rec?.stars ?? 0)}</span><span class="rmeta">${
-        open ? `${rung.frames}-frame match${record}` : `Beat ${escapeHtml(rivalById(HOME_LADDER[i - 1].rival)!.name)} to unlock`
+        unlocked ? `${rung.frames}-frame match${record}` : lockedWhy()
       }</span>`;
-      if (open) b.addEventListener('click', () => openIntro(i));
+      if (unlocked) b.addEventListener('click', () => openIntro(index, i));
       li.append(b);
       ladder.append(li);
     }
-    const total = totalStars(career);
-    $('career-stars').textContent = isChampion(career)
-      ? `🏆 Tomato Dave's champion! ${total} of ${HOME_LADDER.length * 3} stars.`
+    const total = totalStars(career, l.rungs);
+    const max = l.rungs.length * 3;
+    $('career-stars').textContent = isChampion(career, l.rungs)
+      ? `🏆 ${l.name} champion! ${total} of ${max} stars.`
       : total > 0
-        ? `${total} of ${HOME_LADDER.length * 3} stars collected.`
+        ? `${total} of ${max} stars collected here.`
         : '';
     // A match left part-way through can be picked up again
     const saved = career.inProgress;
-    const resume = $('career-resume');
-    resume.hidden = !saved;
+    $('career-resume').hidden = !saved;
     if (saved) {
       const r = rivalById(saved.rival)!;
-      const frame = new Match(['You', r.name], saved.frames);
-      for (const pins of saved.log) frame.recordRoll(pins);
-      $('career-resume-btn').textContent = `▶ Resume vs ${r.emoji} ${r.name} (frame ${Math.min(frame.position.frame + 1, saved.frames)})`;
+      const replay = new Match(['You', r.name], saved.frames);
+      for (const pins of saved.log) replay.recordRoll(pins);
+      $('career-resume-btn').textContent = `▶ Resume vs ${r.emoji} ${r.name} (frame ${Math.min(replay.position.frame + 1, saved.frames)})`;
     }
     showScreen('career');
   }
+  $('ladder-prev').addEventListener('click', () => openCareer(Math.max(0, viewLadder - 1)));
+  $('ladder-next').addEventListener('click', () => openCareer(Math.min(LADDERS.length - 1, viewLadder + 1)));
 
   $('career-resume-btn').addEventListener('click', () => {
     const saved = career.inProgress;
-    const i = HOME_LADDER.findIndex((r) => r.rival === saved?.rival);
-    if (saved && i !== -1) startCareerMatch(i, saved.log);
+    if (!saved) return;
+    const li = LADDERS.indexOf(ladderOf(saved.rival));
+    const ri = LADDERS[li].rungs.findIndex((r) => r.rival === saved.rival);
+    startCareerMatch(li, ri, saved.log);
   });
 
-  let introRung = 0;
-  function openIntro(i: number) {
-    introRung = i;
-    const rung = HOME_LADDER[i];
+  let intro = { ladder: 0, rung: 0 };
+  function openIntro(li: number, ri: number) {
+    intro = { ladder: li, rung: ri };
+    const l = LADDERS[li];
+    const rung = l.rungs[ri];
     const r = rivalById(rung.rival)!;
     $('mi-emoji').textContent = r.emoji;
     $('mi-name').textContent = r.name;
     $('mi-stars').innerHTML = `${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span>`;
     $('mi-quote').textContent = r.intro[Math.floor(Math.random() * r.intro.length)];
-    $('mi-format').textContent = `${rung.frames}-frame match${rung.champion ? ' for the Tomato Dave\'s crown' : ''} · you bowl first`;
+    $('mi-format').textContent = `${rung.frames}-frame match${rung.champion ? ` for the ${l.name} crown` : ''} at ${l.name} · you bowl first${
+      l.rule ? ` · ${l.rule.emoji} ${l.rule.name}` : ''
+    }`;
     showScreen('matchintro');
   }
-  $('mi-go').addEventListener('click', () => startCareerMatch(introRung));
+  $('mi-go').addEventListener('click', () => startCareerMatch(intro.ladder, intro.rung));
 
-  function startCareerMatch(i: number, log: number[] = []) {
-    const rung = HOME_LADDER[i];
+  function startCareerMatch(li: number, ri: number, log: number[] = []) {
+    const rung = LADDERS[li].rungs[ri];
     const r = rivalById(rung.rival)!;
     rival = r;
     startGame('cpu', ['You', r.name], rung.frames, rung, log);
@@ -700,27 +770,41 @@ async function start() {
   /** The result card at the end of a career match. */
   function careerResult(rung: Rung) {
     if (!match || !rival) return;
+    const ladder = ladderOf(rung.rival);
+    const li = LADDERS.indexOf(ladder);
+    const i = ladder.rungs.indexOf(rung);
     const [you, them] = match.totals();
     const result = starsFor(match.players[0].rolls, match.players[1].rolls, match.frames);
     dave.react(result.won ? 'strike' : 'meh');
-    const wasChampion = isChampion(career);
+    const wasChampion = isChampion(career, ladder.rungs);
     career = recordResult(career, rung.rival, you, them, result.stars);
     storage.saveCareer(career);
-    const crowned = rung.champion && result.won && !wasChampion;
-    const fresh = crowned ? gainProgress({ homeChampion: true }, false) : [];
+    const crowned = !!rung.champion && result.won && !wasChampion;
+    const fresh = crowned ? gainProgress({ crowns: [ladder.id], homeChampion: ladder.id === 'classic' }, false) : [];
     const unlocked = [...gameUnlocks, ...fresh];
+    const nextLadder = LADDERS[li + 1];
+    const final = ladder.id === 'golden';
 
-    $('go-title').textContent = result.won ? (crowned ? '🏆 Champion of Tomato Dave\'s!' : `You beat ${rival.name}!`) : you === them ? "It's a tie!" : `${rival.name} wins`;
+    $('go-title').textContent = result.won
+      ? crowned
+        ? `🏆 Champion of ${ladder.name}!`
+        : `You beat ${rival.name}!`
+      : you === them
+        ? "It's a tie!"
+        : `${rival.name} wins`;
     const reasons = [
       ['Win the match', result.won],
       [`Win by ${3 * match.frames}+ pins`, result.bigWin],
       ['Bowl a turkey, or no open frames', result.flair],
     ] as const;
-    const next = nextRung(career);
-    const i = HOME_LADDER.indexOf(rung);
+    const next = nextRung(career, ladder.rungs);
     let note = '';
-    if (result.won && next > i && next !== -1) note = `<p class="small">${rivalById(HOME_LADDER[next].rival)!.emoji} ${escapeHtml(rivalById(HOME_LADDER[next].rival)!.name)} is ready for you.</p>`;
-    if (crowned) note = `<p class="small">You've topped the ladder. New venues are coming soon!</p>`;
+    if (result.won && next > i && next !== -1) {
+      const n = rivalById(ladder.rungs[next].rival)!;
+      note = `<p class="small">${n.emoji} ${escapeHtml(n.name)} is ready for you.</p>`;
+    }
+    if (crowned && nextLadder) note = `<p class="small">${nextLadder.emoji} <b>${escapeHtml(nextLadder.name)}</b> is open!</p>`;
+    if (crowned && final) note = `<p class="small">You've beaten them all. Tomato Dave is the greatest bowler in the land! 🍅👑</p>`;
     $('go-body').innerHTML = `<ul class="results"><li class="${result.won ? 'win' : ''}"><span>You</span><span>${you}</span></li><li class="${!result.won && you !== them ? 'win' : ''}"><span>${rival.emoji} ${escapeHtml(rival.name)}</span><span>${them}</span></li></ul>
       <div class="career-stars" aria-label="${result.stars} of 3 stars">${stars(result.stars)}</div>
       <ul class="star-reasons">${reasons.map(([what, got]) => `<li class="${got ? '' : 'miss'}">${got ? '⭐' : '☆'} ${what}</li>`).join('')}</ul>${note}${
@@ -728,12 +812,41 @@ async function start() {
           ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((u) => escapeHtml(u.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
           : ''
       }`;
-    // Next rival only once this one's beaten and there's someone above
+    // What next: the next rival up; on to the next venue once you're its champion; or, after
+    // the final, the credits
     const nextBtn = $('gc-next') as HTMLButtonElement;
-    nextBtn.hidden = !(result.won && i + 1 < HOME_LADDER.length);
-    nextBtn.onclick = () => openIntro(i + 1);
-    ($('gc-rematch') as HTMLButtonElement).onclick = () => startCareerMatch(i);
+    nextBtn.hidden = true;
+    if (result.won && i + 1 < ladder.rungs.length) {
+      nextBtn.hidden = false;
+      nextBtn.textContent = 'Next rival';
+      nextBtn.onclick = () => openIntro(li, i + 1);
+    } else if (result.won && rung.champion && nextLadder) {
+      nextBtn.hidden = false;
+      nextBtn.textContent = `On to ${nextLadder.name} ${nextLadder.emoji}`;
+      nextBtn.onclick = () => openCareer(li + 1);
+    }
+    ($('gc-credits') as HTMLButtonElement).hidden = !(result.won && final);
+    ($('gc-rematch') as HTMLButtonElement).onclick = () => startCareerMatch(li, i);
   }
+
+  /** The end credits, after winning the Golden Pin. */
+  function openCredits() {
+    const cast = RIVALS.map((r) => `<p>${r.emoji} ${escapeHtml(r.name)}</p>`).join('');
+    $('credits-roll').innerHTML = `
+      <h3>Starring</h3><p>🍅 Tomato Dave</p>
+      <h3>With</h3>${cast}
+      <h3>Venues</h3>${LADDERS.map((l) => `<p>${l.emoji} ${escapeHtml(l.name)}</p>`).join('')}
+      <h3>Music</h3><p>Tomato Lounge · Packet Loss · Disco Dave · Bossa Marinara · Golden Glory</p><p class="small">all composed in code</p>
+      <h3>Built with</h3><p>Three.js · Rapier physics · Vite</p>
+      <h3>And you</h3><p>Thanks for playing! 🎳</p>`;
+    // Restart the roll each time it's opened
+    const roll = $('credits-roll');
+    roll.style.animation = 'none';
+    void roll.offsetWidth;
+    roll.style.animation = '';
+    showScreen('credits');
+  }
+  $('gc-credits').addEventListener('click', openCredits);
 
   // ---- Online leaderboard ----
   const leaderboard = new LeaderboardScreen(() => showScreen('leaderboard'));
@@ -1073,6 +1186,7 @@ async function start() {
         predictorLoading = true;
         void BowlingPhysics.create().then((p) => {
           for (const i of p.pins.keys()) p.removePin(i);
+          p.setConditions(lane);
           predictor = p;
         });
       }
@@ -1369,6 +1483,10 @@ async function start() {
     startGame,
     startCpu,
     startCareerMatch,
+    openCredits,
+    get lane() {
+      return lane;
+    },
     get career() {
       return career;
     },

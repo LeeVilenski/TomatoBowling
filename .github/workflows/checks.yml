@@ -32,8 +32,22 @@ jobs:
         run: npm run check:physics
       - name: Leaderboard API
         run: npm run check:api
-      - name: Computer rivals play to their level
-        run: npm run check:rivals
+
+  rivals:
+    name: Computer rivals play to their level
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Every rival through seeded, simulated games at their own venue (a short run; use
+      # `npm run check:rivals -- --games 16` locally when tuning)
+      - name: Simulated games for each rival
+        run: npm run check:rivals -- --games 6
 
   browser:
     name: Build and play in a browser
