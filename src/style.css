@@ -328,10 +328,14 @@ body.replaying #aim-legend { visibility: hidden; }
 @media (min-height: 700px) and (min-width: 700px) { #menu, #gameover { padding-bottom: 6vh; } }
 
 /* Music / sound toggles */
-.toggles { display: flex; gap: 8px; margin-top: 14px; }
+.toggles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%; margin-top: 14px; }
 .card .toggle {
-  flex: 1;
+  min-width: 0;
   height: 40px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 14px;
   font-weight: 600;
   background: transparent;
@@ -363,7 +367,6 @@ body.replaying #aim-legend { visibility: hidden; }
 /* Menu button pairs */
 .button-row { display: flex; gap: 10px; }
 .button-row button { flex: 1; }
-.toggles { flex-wrap: wrap; }
 
 /* Wardrobe */
 .card h3 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; text-align: left; }
@@ -602,3 +605,9 @@ body.replaying #hint, body.replaying #spin, body.replaying #practice-panel { vis
 .rival-quote::before, .rival-quote::after { content: none; }
 /* Sits above Fast forward, which can show at the same time */
 #skip-btn { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 100px); }
+
+/* Very narrow phones: keep every settings toggle on one line */
+@media (max-width: 360px) {
+  .card .toggle, #menu .card .toggle { font-size: 11px; padding: 0 4px; }
+  .card .toggle b { margin-left: 3px; }
+}
