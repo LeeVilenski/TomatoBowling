@@ -25,14 +25,14 @@ export const RIVAL_BALLS: Record<string, BallStyle> = {
     roughness: 0.04,
     metalness: 0.15,
   }),
-  // Donut Dana: pink glaze with sprinkles, and chocolate glaze
+  // Donut Dana: pink glaze with sprinkles, and dipped all over in chocolate
   'donut-strike': ball([
     { fill: '#d9a05b' },
     { drip: '#ff8fc4', to: 0.5 },
     { speckle: ['#ffffff', '#ffd23a', '#4fc3ff', '#7ee05a', '#ff5252'], count: 220, size: 0.009, from: 0, to: 0.52 },
   ]),
-  'donut-spare': ball([{ fill: '#d9a05b' }, { drip: '#5a2f17', to: 0.52 }, { speckle: ['#ffffff', '#f5e6c8'], count: 160, size: 0.007, from: 0, to: 0.52 }], {
-    roughness: 0.15,
+  'donut-spare': ball([{ fill: '#3f1e0c' }, { veins: '#6b3a1c', count: 18, width: 5 }, { speckle: ['#ffffff', '#f5e6c8'], count: 260, size: 0.007 }], {
+    roughness: 0.12,
   }),
   // Sandy Wich: a stacked club sandwich, and a toasted crust
   'sandy-strike': ball([{ bands: ['#e8c48a', '#7cc43a', '#e0261b', '#ffd23a', '#f2a3a0', '#7cc43a', '#e8c48a'], wobble: 1 }], { roughness: 0.5 }),
@@ -60,7 +60,7 @@ export const RIVAL_BALLS: Record<string, BallStyle> = {
   'cookie-strike': ball([{ fill: '#d39a55' }, { speckle: ['#c58a48', '#e0ac68'], count: 200, size: 0.012 }, { speckle: ['#3d2010', '#4f2a14'], count: 70, size: 0.02 }], {
     roughness: 0.75,
   }),
-  'cookie-spare': ball([{ fill: '#4a2614' }, { speckle: ['#5a301a'], count: 160, size: 0.012 }, { speckle: ['#fff3dc', '#f2e2c0'], count: 70, size: 0.018 }], {
+  'cookie-spare': ball([{ fill: '#2e160a' }, { speckle: ['#45230f'], count: 160, size: 0.012 }, { speckle: ['#fff3dc', '#f2e2c0'], count: 110, size: 0.022 }], {
     roughness: 0.7,
   }),
   // Wafer Walt: a golden waffle, and an iridescent silicon wafer
@@ -73,15 +73,15 @@ export const RIVAL_BALLS: Record<string, BallStyle> = {
   'brie-strike': ball([{ fill: '#f6f0dc' }, { speckle: ['#ebe1c0', '#fffaf0'], count: 300, size: 0.01 }, { bands: ['', '', '#f0d478', '#f0d478', '', ''], wobble: 0.3 }, { speckle: ['#fff3c4', '#e2c262'], count: 60, size: 0.008, from: 0.36, to: 0.64 }], {
     roughness: 0.8,
   }),
-  'brie-spare': ball([{ fill: '#efe8cf' }, { veins: '#3d6b7a', count: 22, width: 4 }, { speckle: ['#2f5868', '#4c8090'], count: 120, size: 0.008 }], { roughness: 0.7 }),
+  'brie-spare': ball([{ fill: '#9fb8c0' }, { veins: '#2a5566', count: 60, width: 6 }, { speckle: ['#1f4656', '#e8e4d0'], count: 420, size: 0.012 }], { roughness: 0.7 }),
 
   // ---------------------------------------------------------------- Disco Inferno
   // Jelly Jive: a glossy red jelly, and a rainbow jelly
   'jelly-strike': ball([{ gradient: ['#ff5a6a', '#e01e3c', '#a30d26'] }], { roughness: 0.02, glow: '#3a0008' }),
   'jelly-spare': ball([{ bands: ['#ff4f6d', '#ff9f43', '#ffe14d', '#5ce07a', '#4fb3ff', '#a66bff'], wobble: 1.5 }], { roughness: 0.03, glow: '#140a14' }),
-  // Mango Tango: a ripening mango, and a sorbet swirl
+  // Mango Tango: a ripening mango, and a creamy mango lassi swirl
   'mango-strike': ball([{ gradient: ['#e8442e', '#ff8c1a', '#ffc23a', '#8bbf3a'] }, { speckle: ['#ffe39a'], count: 90, size: 0.004 }], { roughness: 0.25 }),
-  'mango-spare': ball([{ swirl: ['#ffb02e', '#ff7a1c', '#ffd86a'], turns: 3 }], { roughness: 0.3 }),
+  'mango-spare': ball([{ swirl: ['#fff4dc', '#fff4dc', '#ff9a1c'], turns: 3 }], { roughness: 0.15 }),
   // Lemon Twist: a lemon twist, and a lime
   'lemon-strike': ball([{ swirl: ['#ffe14d', '#fff7c2'], turns: 2 }], { roughness: 0.25 }),
   'lemon-spare': ball([{ gradient: ['#5fb32c', '#7fcf3a', '#5fb32c'] }, { speckle: ['#9be05a', '#4a9a20'], count: 350, size: 0.005 }], { roughness: 0.35 }),
@@ -99,20 +99,20 @@ export const RIVAL_BALLS: Record<string, BallStyle> = {
   // Sunny Side: a fried egg, and scrambled
   'sunny-strike': ball([{ fill: '#fbf8ef' }, { spots: [[0.25, 0.5, 0.2, '#ffc61a'], [0.75, 0.5, 0.2, '#ffc61a']] }], { roughness: 0.12 }),
   'sunny-spare': ball([{ fill: '#ffe066' }, { speckle: ['#fff3b0', '#f5c832', '#ffffff'], count: 260, size: 0.02 }], { roughness: 0.5 }),
-  // Ice Lolly Lou: a swirly lollipop, and a rocket lolly
+  // Ice Lolly Lou: a swirly lollipop, and a sunset-striped rocket lolly
   'lolly-strike': ball([{ swirl: ['#ff5aa5', '#ffffff', '#4fc3ff', '#ffffff'], turns: 3 }], { roughness: 0.08 }),
-  'lolly-spare': ball([{ bands: ['#e8262b', '#e8262b', '#fff7ea', '#fff7ea', '#2a6fd6', '#2a6fd6'] }], { roughness: 0.1 }),
+  'lolly-spare': ball([{ bands: ['#e8262b', '#e8262b', '#ff8a1c', '#ff8a1c', '#ffd23a', '#ffd23a'] }], { roughness: 0.1 }),
   // Kiwi Kai: fuzzy kiwi skin, and a kiwi slice
   'kiwi-strike': ball([{ fill: '#7d6a3a' }, { speckle: ['#958250', '#5e5028', '#a8955e'], count: 1400, size: 0.005 }], { roughness: 0.95 }),
   'kiwi-spare': ball([{ gradient: ['#f4f2d0', '#8fd13a', '#6fbf2a', '#8fd13a', '#f4f2d0'] }, { speckle: ['#141414'], count: 140, size: 0.006, from: 0.32, to: 0.68 }], {
     roughness: 0.15,
   }),
-  // Big Russet: a russet potato with eyes, and a hash brown
+  // Big Russet: a russet potato with eyes, and buttery mash
   'russet-strike': ball([{ fill: '#a6774a' }, { speckle: ['#8a5f38', '#b88a5c'], count: 300, size: 0.012 }, { speckle: ['#5e3c1e'], count: 18, size: 0.012 }], {
     roughness: 0.9,
   }),
-  'russet-spare': ball([{ fill: '#d9932e' }, { veins: '#9a5214', count: 30, width: 3 }, { speckle: ['#f2c063', '#7a3e0e'], count: 260, size: 0.007 }], {
-    roughness: 0.6,
+  'russet-spare': ball([{ fill: '#f7eed2' }, { speckle: ['#efe2bc', '#fffaea'], count: 400, size: 0.014 }, { drip: '#ffd84a', to: 0.14 }], {
+    roughness: 0.5,
   }),
 
   // ---------------------------------------------------------------- The Golden Pin

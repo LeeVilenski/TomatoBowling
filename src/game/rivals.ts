@@ -77,7 +77,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'donut',
-    balls: { strike: 'Pink Sprinkle', spare: 'Choc Glaze' },
+    balls: { strike: 'Pink Sprinkle', spare: 'Choc Dip' },
     name: 'Donut Dana',
     blurb: 'All gas, no brakes. A bit of a hole in her game.',
     stars: 2,
@@ -290,7 +290,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'mango',
-    balls: { strike: 'Ripe Mango', spare: 'Sorbet Swirl' },
+    balls: { strike: 'Ripe Mango', spare: 'Mango Lassi' },
     name: 'Mango Tango',
     emoji: '🥭',
     blurb: 'Smooth moves, ripe timing, and a big sweeping hook.',
@@ -397,7 +397,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'lolly',
-    balls: { strike: 'Swirl Pop', spare: 'Rocket Lolly' },
+    balls: { strike: 'Swirl Pop', spare: 'Sunset Rocket' },
     name: 'Ice Lolly Lou',
     emoji: '🍭',
     blurb: 'Cool as anything, even at sunset. Throws it hard with a quick little hook.',
@@ -450,7 +450,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'russet',
-    balls: { strike: 'Lumpy Russet', spare: 'Hash Brown' },
+    balls: { strike: 'Lumpy Russet', spare: 'Buttery Mash' },
     name: 'Big Russet',
     emoji: '🥔',
     blurb: 'The Rooftop champion. Big, lumpy, and steady as a sack of spuds.',
