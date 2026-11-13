@@ -6,7 +6,7 @@ export const SEAT_TOP = 0.44;
 /**
  * The bowlers' bench behind the approach, where whoever isn't bowling sits and watches:
  * a red vinyl settee on chrome legs, like the ones in old alleys. Its origin is the spot a
- * figure sits on (`sitAt`/`walkTo(..., 'sit')` at the same x, z), at the left end, with the
+ * figure sits on (`sitAt`/`walkTo(..., 'sit')` at the same x, z), at the right end, with the
  * seat facing the lanes (-z).
  */
 export function buildBench(): THREE.Group {
@@ -24,7 +24,9 @@ export function buildBench(): THREE.Group {
     return m;
   };
   const LEN = 1.7;
-  const MID_X = LEN / 2 - 0.4; // the sitting spot is near the left end
+  // The sitting spot is near the right-hand end (the sitter's right), where the camera sees
+  // it beside the bowler when it turns round to look at them
+  const MID_X = -(LEN / 2 - 0.4);
   // Seat cushion: runs from just in front of the hips to the backrest
   const seatDepth = 0.42;
   const seatZ = 0.05;

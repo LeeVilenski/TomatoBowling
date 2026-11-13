@@ -62,7 +62,9 @@ const DAVE_OFFSET_X = 0.3;
 const DAVE_Z = 0.62;
 // In a match against a rival, whoever isn't bowling sits on the bench behind the approach
 // (behind the camera while you aim), and walks up from there for their turn
-const SEAT_X = -0.55;
+// The seat is off to the right, so when the camera turns round to look at the bowler, whoever
+// is sitting shows up in the background beside them rather than hidden behind them
+const SEAT_X = 0.45;
 const SEAT_Z = 5.3;
 const HANDOVER_SPEED = 1.6; // a brisk walk, m/s
 const BALL_IN_HAND = new THREE.Vector3(0, -0.075, 0);
@@ -142,8 +144,15 @@ async function start() {
     bowler = to;
     handover = true;
     const speed = rushing ? HANDOVER_SPEED * 3 : HANDOVER_SPEED;
-    from.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed });
-    to.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed, onArrive: () => (handover = false) });
+    from.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed, via: benchPath() });
+    to.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed, via: benchPath(), onArrive: () => (handover = false) });
+  }
+  /**
+   * The way between the approach and the bench: round the left of the aiming camera (which
+   * sits over the bowler's right shoulder), so nobody walks through it.
+   */
+  function benchPath(): [number, number][] {
+    return [[aimX - DAVE_OFFSET_X - 0.5, DAVE_Z + 2.8]];
   }
 
   // ---- Unlockables: progress, and the ball and suit Dave is using ----
@@ -979,8 +988,8 @@ async function start() {
     const rivalReacts = () => rivalFig.watch(won ? 'gutter' : 'strike');
     if (rivalFig.root.visible && dave.sitting) {
       handover = false;
-      rivalFig.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed: HANDOVER_SPEED, onArrive: rivalReacts });
-      dave.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed: HANDOVER_SPEED, onArrive: () => dave.react(reaction) });
+      rivalFig.walkTo(SEAT_X, SEAT_Z, { face: 0, then: 'sit', speed: HANDOVER_SPEED, via: benchPath(), onArrive: rivalReacts });
+      dave.walkTo(aimX - DAVE_OFFSET_X, DAVE_Z, { face: 0, then: 'idle', speed: HANDOVER_SPEED, via: benchPath(), onArrive: () => dave.react(reaction) });
     } else {
       dave.react(reaction);
       dave.faceTo(0);

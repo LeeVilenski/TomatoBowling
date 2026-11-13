@@ -232,7 +232,16 @@ export class Dave {
   private yaw = 0;
   private wantYaw = 0;
   /** Where he's walking to, what to do when he gets there, and which way to face. */
-  private walk: { x: number; z: number; then: 'idle' | 'wait' | 'sit'; face: number; speed: number; onArrive?: () => void } | null = null;
+  private walk: {
+    x: number;
+    z: number;
+    /** Points to pass through first, in order */
+    via: [number, number][];
+    then: 'idle' | 'wait' | 'sit';
+    face: number;
+    speed: number;
+    onArrive?: () => void;
+  } | null = null;
   /** Sitting down (on the bench behind the approach) while waiting for a turn. */
   private seated = false;
   /** Seconds left getting up off the bench before a walk sets off. */
@@ -516,14 +525,23 @@ export class Dave {
   /**
    * Walk to (x, z), then turn to face `face` and either get ready to bowl ('idle'), wait
    * for a turn standing ('wait') or sit down there to wait ('sit'). If he's sitting, he
-   * gets up first. `onArrive` fires when he's there.
+   * gets up first. He goes by way of the `via` points, if any (to walk round something).
+   * `onArrive` fires when he's there.
    */
   walkTo(
     x: number,
     z: number,
-    opts: { face?: number; then?: 'idle' | 'wait' | 'sit'; speed?: number; onArrive?: () => void } = {},
+    opts: { face?: number; then?: 'idle' | 'wait' | 'sit'; speed?: number; via?: [number, number][]; onArrive?: () => void } = {},
   ) {
-    this.walk = { x, z, then: opts.then ?? 'idle', face: opts.face ?? 0, speed: opts.speed ?? WALK_SPEED, onArrive: opts.onArrive };
+    this.walk = {
+      x,
+      z,
+      via: [...(opts.via ?? [])],
+      then: opts.then ?? 'idle',
+      face: opts.face ?? 0,
+      speed: opts.speed ?? WALK_SPEED,
+      onArrive: opts.onArrive,
+    };
     if (this.seated) this.rising = RISE_TIME;
     this.seated = false;
     this.setState('walk');
@@ -662,10 +680,17 @@ export class Dave {
       this.rising -= dt;
       return;
     }
-    const dx = w.x - this.base.x;
-    const dz = w.z - this.base.z;
+    const [tx, tz] = w.via[0] ?? [w.x, w.z];
+    const dx = tx - this.base.x;
+    const dz = tz - this.base.z;
     const dist = Math.hypot(dx, dz);
     const step = w.speed * dt;
+    // Passing a waypoint: on to the next (the leftover step is lost; at 60 fps it's a few mm)
+    if (w.via.length && dist <= step) {
+      this.base.set(tx, 0, tz);
+      w.via.shift();
+      return;
+    }
     if (dist <= step) {
       this.base.set(w.x, 0, w.z);
       this.wantYaw = w.face;
