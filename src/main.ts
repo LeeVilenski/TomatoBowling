@@ -315,15 +315,13 @@ async function start() {
   let matchLog: number[] = [];
   let cpuTimer = 0;
   let cpuThrow: ThrowParams | null = null;
-  /** Rushing through the rival's turn (the ⏩ Skip button): quick rolls, no pauses. */
+  /**
+   * Rushing through the rival's turn: quick rolls, no pauses. Only a fallback for ⏩ Skip
+   * while the throw planner is still loading; normally Skip plays the turn out at once.
+   */
   let rushing = false;
   const skipBtn = $('skip-btn') as HTMLButtonElement;
-  skipBtn.addEventListener('click', () => {
-    rushing = true;
-    if (phase === 'rolling' || phase === 'settling') setFastForward(true);
-    // Anyone on their way to or from the bench picks up the pace
-    for (const fig of [dave, rivalFig]) fig.hurry(HANDOVER_SPEED * 3);
-  });
+  skipBtn.addEventListener('click', () => skipRivalTurn());
   const cpuTurn = () => mode === 'cpu' && rival !== null && match !== null && match.current === 1 && !match.gameOver;
   let match: Match | null = null;
   let outcome: RollOutcome | null = null;
@@ -697,6 +695,8 @@ async function start() {
     handover = false;
     bowler = dave;
     rivalFig.root.visible = mode === 'cpu' && rival !== null;
+    // The rival's throw planner, loaded now so it's ready for their first ball (or a ⏩ Skip)
+    if (rivalFig.root.visible) ensurePredictor();
     if (rivalFig.root.visible && rival) {
       rivalFig.setHead(rival.head);
       rivalFig.setOutfit(rival.outfit);
@@ -1466,6 +1466,115 @@ async function start() {
       sound.ballHit(strength);
       if (splashed.size === 1) buzz(25);
     }
+  }
+
+  /**
+   * ⏩ Skip: the rest of the rival's turn is played out at once, off screen, with the same
+   * physics and the same aim (and misses) as if you'd watched it. Then it's your go.
+   */
+  function skipRivalTurn() {
+    if (!cpuTurn() || !rival || !match) return;
+    const tracer = ensurePredictor();
+    if (!tracer) {
+      // Can't plan a throw yet (only in the first moments of a match): hurry instead
+      rushing = true;
+      if (phase === 'rolling' || phase === 'settling') setFastForward(true);
+      for (const fig of [dave, rivalFig]) fig.hurry(HANDOVER_SPEED * 3);
+      return;
+    }
+    const r = rival;
+    const m = match;
+    endReplay();
+    recorder.stop();
+    lastReplay = null;
+    autoReplay = false;
+    pendingAnim = null;
+    monitorGlance = false;
+    cpuThrow = null;
+    speech.hide();
+    juice.clear();
+    setFastForward(false);
+    const before = m.players[1].rolls.length;
+
+    /** Let the ball run and the pins fall, by the game's own rules, in one go. */
+    const settleNow = () => {
+      let settle = 0;
+      for (let i = 0; i < 120 * 14; i++) {
+        physics.step();
+        const b = physics.ball.translation();
+        const v = physics.ball.linvel();
+        if (b.z < HEAD_PIN_Z + 0.5 || b.y < -0.2 || Math.hypot(v.x, v.z) < 0.2) settle++;
+        if ((settle > 240 && physics.isSettled()) || settle > 720) break;
+      }
+    };
+    /** Score a ball, as finishThrow does (minus the show). */
+    const record = () => {
+      const knocked = physics.pinsDown() - downBefore;
+      const kind = classifyThrow(knocked, 10 - downBefore, m.position.fresh, physics.standingPins());
+      trackers[m.current].record(kind === 'strike' || kind === 'spare' || kind === 'split' ? kind : 'other');
+      outcome = m.recordRoll(knocked);
+      matchLog.push(knocked);
+      nextSetter = outcome.freshRack ? 'rerack' : 'clear';
+    };
+    /** The pinsetter's whole cycle, at once. */
+    const setPins = (mode: PinsetterMode) => {
+      pinsetter.start(mode, () => {});
+      pinsetter.finishNow();
+    };
+
+    // Wherever the turn had got to: a ball on its way finishes; pins waiting to be reset
+    // are reset. (Swinging or lining up, nothing's been thrown yet.)
+    let reset = false;
+    if (phase === 'rolling' || phase === 'settling') {
+      settleNow();
+      record();
+      reset = true;
+    } else if (phase === 'result' || phase === 'replay') reset = true;
+    else if (phase === 'sweeping') pinsetter.finishNow();
+    // The rest of the turn, ball by ball
+    while (cpuTurn()) {
+      if (reset) setPins(nextSetter);
+      const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
+      const target = chooseTarget(standing, r);
+      const [you, them] = m.totals();
+      const t = humanise(r, planThrow(r, target, tracer), pressureFor(m.position.frame, them, you, m.frames), undefined, !target.fullRack);
+      aimX = t.x;
+      physics.holdBall(aimX);
+      physics.step();
+      downBefore = physics.pinsDown();
+      physics.throwBall({ x: t.x, angle: t.angle, speed: t.speed, spin: t.spin ?? 0 });
+      settleNow();
+      record();
+      reset = true;
+    }
+
+    // Your go: the rival's back on the bench, you're on the approach
+    pinsetter.cancel();
+    rushing = false;
+    handover = false;
+    skipBtn.hidden = true;
+    const rolls = m.players[1].rolls.slice(before);
+    const said = rolls.length ? `${r.name} bowled ${rolls.reduce((a, b) => a + b, 0)} (${rolls.join(', ')})` : `${r.name} is done`;
+    renderScorecard(scorecardEl, m);
+    scoreboard.showScores(m.players, m.players.indexOf(m.player), m.frames);
+    phase = 'aiming';
+    aim = 0;
+    if (outcome?.gameOver) {
+      // The last ball of the match was theirs
+      outcome = null;
+      physics.holdBall(aimX);
+      showGameOver();
+      return;
+    }
+    outcome = null;
+    physics.resetPins();
+    physics.holdBall(aimX);
+    rivalFig.sitAt(SEAT_X, SEAT_Z);
+    bowler = dave;
+    dave.place(aimX - DAVE_OFFSET_X, DAVE_Z, 0);
+    dave.idle();
+    setTurnStatus();
+    setStatus(`${said}. Your turn!`);
   }
 
   /** The computer rival's turn: size up the pins, step into place, then bowl. */

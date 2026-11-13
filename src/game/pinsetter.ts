@@ -72,6 +72,28 @@ export class Pinsetter {
     this.sweep.visible = false;
   }
 
+  /**
+   * Jump to the end of the cycle straight away: the pins end up exactly as a full cycle
+   * leaves them (fallen pins gone, standing ones set back down, or a fresh rack), but
+   * `onDone` isn't called. Used when skipping a rival's turn.
+   */
+  finishNow() {
+    if (!this.active) return;
+    if (this.mode === 'clear') {
+      const heldIds = new Set(this.held.map((h) => h.i));
+      this.physics.pins.forEach((_, i) => {
+        if (!heldIds.has(i) && !this.physics.isPinRemoved(i)) this.physics.removePin(i);
+      });
+      for (const p of this.held) this.physics.placePin(p.i, p.x, 0, p.z);
+    } else {
+      this.physics.resetPins();
+      for (let i = 0; i < this.physics.pins.length; i++) if (!this.rack.includes(i)) this.physics.removePin(i);
+    }
+    this.active = false;
+    this.onDone = null;
+    this.sweep.visible = false;
+  }
+
   /** Call once per physics step while active. */
   update(dt: number) {
     if (!this.active) return;
