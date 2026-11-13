@@ -1103,8 +1103,14 @@ async function start() {
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
     if (careerRung) {
       gameUnlocks.push(...fresh);
-      leaderboard.hide(); // career scores stay out of the main leaderboard
       careerResult(careerRung);
+      // A full 10-frame match goes on the leaderboard like any other game (your score only,
+      // never the rival's). The short 5-frame warm-up matches can't: the board is for full games.
+      if (match.frames === 10) leaderboard.offer([{ score: totals[0], rolls: [...match.players[0].rolls] }]);
+      else {
+        leaderboard.hide();
+        $('go-body').insertAdjacentHTML('beforeend', '<p class="small">Short matches don\'t go on the online leaderboard: only full 10-frame games do.</p>');
+      }
       showScreen('gameover');
       return;
     }

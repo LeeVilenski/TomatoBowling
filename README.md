@@ -8,7 +8,7 @@ A 3D browser bowling game starring Tomato Dave. See [PLAN.md](PLAN.md) for the f
 
 To use your own music instead, add an MP3 at `public/audio/music.mp3` and it will loop in place of the built-in tune.
 
-**Online leaderboard (stage 6):** after a single-player game you can add your score to an all-time top 50 (🏆 Leaderboard on the menu). The server re-checks every game ball by ball, filters rude names, and limits each IP to 5 submissions an hour. If the leaderboard isn't reachable, the game carries on and says "Leaderboard offline".
+**Online leaderboard (stage 6):** after a single-player game, a game against a rival, or a full 10-frame Career match, you can add your score to an all-time top 50 (🏆 Leaderboard on the menu). The server re-checks every game ball by ball, filters rude names, and limits each IP to 5 submissions an hour. If the leaderboard isn't reachable, the game carries on and says "Leaderboard offline".
 
 **Unlockables (stage 7):** earn new tomato balls and suits for Dave, then pick them in the 👔 Wardrobe:
 
