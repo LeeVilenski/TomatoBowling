@@ -114,6 +114,8 @@ async function start() {
 
   const physics = await physicsReady;
   const bodies = [physics.ball, ...physics.pins];
+  // Stem bounce: the tomato's stem can catch the lane and make it hop. Players can switch it off.
+  physics.stemBumps = storage.setting('stem', true);
 
   const pinSet = new PinSet(physics.pins.length);
   scene.add(pinSet.group);
@@ -1325,7 +1327,8 @@ async function start() {
         b.querySelector('b')!.textContent = quality === 'high' ? 'High' : 'Low';
         continue;
       }
-      const on = b.dataset.toggle === 'music' ? sound.musicOn : sound.sfxOn;
+      const t = b.dataset.toggle;
+      const on = t === 'music' ? sound.musicOn : t === 'stem' ? physics.stemBumps : sound.sfxOn;
       b.setAttribute('aria-pressed', String(on));
       b.querySelector('b')!.textContent = on ? 'On' : 'Off';
     }
@@ -1335,6 +1338,10 @@ async function start() {
       sound.unlock();
       if (b.dataset.toggle === 'music') sound.toggleMusic();
       else if (b.dataset.toggle === 'sfx') sound.toggleSfx();
+      else if (b.dataset.toggle === 'stem') {
+        physics.stemBumps = !physics.stemBumps;
+        storage.saveSetting('stem', physics.stemBumps);
+      }
       else {
         quality = quality === 'high' ? 'low' : 'high';
         storage.saveText('quality', quality);
