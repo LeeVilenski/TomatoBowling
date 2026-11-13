@@ -24,3 +24,18 @@ describe('PinSet', () => {
     expect(m.elements.every((v, i) => (i === 15 ? v === 1 : v === 0))).toBe(true); // hidden: scaled to nothing
   });
 });
+
+describe("rivals' balls", () => {
+  it('every rival has a strike ball and a spare ball, regulation size so their tuning holds', async () => {
+    const { RIVALS } = await import('../game/rivals');
+    const { BALL_STYLES } = await import('./models');
+    const { BALL_RADIUS } = await import('../game/dimensions');
+    for (const r of RIVALS) {
+      for (const kind of ['strike', 'spare']) {
+        const style = BALL_STYLES[`${r.id}-${kind}`];
+        expect(style, `${r.name}'s ${kind} ball`).toBeDefined();
+        expect(style.radius).toBe(BALL_RADIUS);
+      }
+    }
+  });
+});

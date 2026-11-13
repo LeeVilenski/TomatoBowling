@@ -118,6 +118,7 @@ async function start() {
   const pinSet = new PinSet(physics.pins.length);
   scene.add(pinSet.group);
   let ballMesh = createTomatoBall();
+  ballMesh.userData.style = 'classic';
   scene.add(ballMesh);
   buildDecor(scene);
   const dave = new Dave();
@@ -159,24 +160,53 @@ async function start() {
   let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
   let equipped: Equipped = storage.equipped();
   let speedBonus = 1;
+  /** Balls built so far, by style, so swapping between bowlers' balls doesn't rebuild them. */
+  const ballModels = new Map<string, THREE.Group>([['classic', ballMesh]]);
+  /** Puts this ball on the lane (and sizes the physics ball to match). */
+  function showBall(style: string) {
+    if (ballMesh.userData.style !== style) {
+      let next = ballModels.get(style);
+      if (!next) {
+        next = createTomatoBall(style);
+        next.userData.style = style;
+        ballModels.set(style, next);
+      }
+      next.position.copy(ballMesh.position);
+      next.quaternion.copy(ballMesh.quaternion);
+      next.visible = ballMesh.visible;
+      scene.remove(ballMesh);
+      ballMesh = next;
+      scene.add(ballMesh);
+    }
+    physics.setBallRadius(BALL_STYLES[style].radius);
+  }
+  /** Keeps only the balls in use: Dave's, and the current rival's. */
+  function pruneBalls() {
+    const keep = new Set([equipped.ball, ballMesh.userData.style, ...(rival ? [`${rival.id}-strike`, `${rival.id}-spare`] : [])]);
+    for (const [style, model] of ballModels) {
+      if (keep.has(style)) continue;
+      disposeModel(model);
+      ballModels.delete(style);
+    }
+  }
+  /**
+   * The ball for the next throw: a rival picks up their strike ball for a full rack and
+   * their spare ball for anything else; everyone else bowls Dave's.
+   */
+  function ballForTurn() {
+    if (!cpuTurn() || !rival || !match) return equipped.ball;
+    return `${rival.id}-${match.position.standing === 10 ? 'strike' : 'spare'}`;
+  }
   function equip({ ball, suit }: Equipped) {
     const owned = unlockedIds(progress);
     if (!owned.has(ball)) ball = 'classic';
     if (!owned.has(suit)) suit = 'navy';
-    if (ball !== equipped.ball || !ballMesh.userData.style) {
-      scene.remove(ballMesh);
-      disposeModel(ballMesh);
-      ballMesh = createTomatoBall(ball);
-      ballMesh.userData.style = ball;
-      scene.add(ballMesh);
-    }
     equipped = { ball, suit };
     storage.saveEquipped(equipped);
-    physics.setBallRadius(BALL_STYLES[ball].radius);
+    showBall(ballForTurn());
     speedBonus = ball === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
     dave.setOutfit(suit);
   }
-  equip(equipped);
 
   // ---- Graphics quality: Low drops shadows and renders at a lower resolution ----
   // Only very modest devices start on Low (most phones report 6+ cores)
@@ -328,6 +358,7 @@ async function start() {
   let practiceBall: 1 | 2 = 1;
   let practiceRack: number[] | null = null; // a spare setup being practised, or null for full racks
   let nextSetter: PinsetterMode = 'rerack';
+  equip(equipped);
   let openScreen: ScreenId | null = null;
 
   const setStatus = (text: string) => (status.textContent = text);
@@ -507,6 +538,7 @@ async function start() {
   function setTurnStatus() {
     if (!match) return;
     const pos = match.position;
+    showBall(ballForTurn());
     // Career: save at each frame boundary (a fresh rack), so the match can be resumed
     if (careerRung && pos.ball === 0 && !match.gameOver) {
       career = { ...career, inProgress: { rival: careerRung.rival, frames: match.frames, log: [...matchLog] } };
@@ -697,6 +729,8 @@ async function start() {
     rivalFig.root.visible = mode === 'cpu' && rival !== null;
     // The rival's throw planner, loaded now so it's ready for their first ball (or a ⏩ Skip)
     if (rivalFig.root.visible) ensurePredictor();
+    showBall(ballForTurn());
+    pruneBalls();
     if (rivalFig.root.visible && rival) {
       rivalFig.setHead(rival.head);
       rivalFig.setOutfit(rival.outfit);
@@ -728,7 +762,7 @@ async function start() {
       const b = document.createElement('button');
       b.className = 'rival';
       const rec = record[r.id];
-      b.innerHTML = `<span class="rname">${r.emoji} ${escapeHtml(r.name)}</span><span class="rstars" aria-label="${r.stars} of 5 stars">${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span></span><span class="rblurb">${escapeHtml(r.blurb)}</span>${
+      b.innerHTML = `<span class="rname">${r.emoji} ${escapeHtml(r.name)}</span><span class="rstars" aria-label="${r.stars} of 5 stars">${'★'.repeat(r.stars)}<span class="off">${'★'.repeat(5 - r.stars)}</span></span><span class="rblurb">${escapeHtml(r.blurb)}</span><span class="rballs">🎳 ${escapeHtml(r.balls.strike)} · ${escapeHtml(r.balls.spare)} for spares</span>${
         rec ? `<span class="rrecord">You: won ${rec.w} · lost ${rec.l}${rec.t ? ` · tied ${rec.t}` : ''}</span>` : ''
       }`;
       b.addEventListener('click', () => startCpu(r.id));

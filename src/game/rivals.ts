@@ -28,6 +28,11 @@ export interface Rival extends BowlerSkill {
   stars: number;
   /** What this rival should average over a 10-frame game (checked by the tuning harness). */
   targetAverage: number;
+  /**
+   * Names of their two balls: one for full racks, one for picking up spares. The balls'
+   * looks are in src/scene/rivalBalls.ts, as `<id>-strike` and `<id>-spare`.
+   */
+  balls: { strike: string; spare: string };
   /** Suit they wear; they bowl in Dave's body with their own head. */
   outfit: string;
   head: RivalHead;
@@ -46,6 +51,7 @@ export interface Rival extends BowlerSkill {
 export const RIVALS: Rival[] = [
   {
     id: 'pickle',
+    balls: { strike: 'The Gherkin', spare: 'The Brine Jar' },
     name: 'Pickle Pete',
     blurb: 'Slow, straight and sweats brine under pressure.',
     stars: 1,
@@ -71,6 +77,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'donut',
+    balls: { strike: 'Pink Sprinkle', spare: 'Choc Glaze' },
     name: 'Donut Dana',
     blurb: 'All gas, no brakes. A bit of a hole in her game.',
     stars: 2,
@@ -96,6 +103,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'sandy',
+    balls: { strike: 'The Club Stack', spare: 'The Crust' },
     name: 'Sandy Wich',
     blurb: 'A neat little hook, and very smug about her spares.',
     stars: 3,
@@ -122,6 +130,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'carl',
+    balls: { strike: 'The Carrot', spare: 'Purple Heritage' },
     name: 'Carrot Carl',
     blurb: "The home champion. Steady hook, steady nerves, steady smugness.",
     stars: 4,
@@ -148,6 +157,7 @@ export const RIVALS: Rival[] = [
   // ---------------------------------------------------------------- Server Room Lanes
   {
     id: 'chip',
+    balls: { strike: 'Ready Salted', spare: 'The Floppy' },
     name: 'Micro Chip',
     emoji: '💾',
     blurb: 'A crisp in a hurry. Thin, salty and very, very fast.',
@@ -173,6 +183,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'cookie',
+    balls: { strike: 'Choc Chip', spare: 'Double Choc' },
     name: 'Cookie Kate',
     emoji: '🍪',
     blurb: 'Tracks every throw. Accepts all challenges. Very sweet, very smug.',
@@ -199,6 +210,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'wafer',
+    balls: { strike: 'Golden Waffle', spare: 'Silicon Wafer' },
     name: 'Wafer Walt',
     emoji: '🧇',
     blurb: 'Thin as silicon, layered like a server rack. Hooks the other way.',
@@ -224,6 +236,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'brie',
+    balls: { strike: 'The Wheel', spare: 'Blue Vein' },
     name: 'Byte-sized Brie',
     emoji: '🧀',
     blurb: 'The Server Room champion. Ripe, refined and running the whole cluster.',
@@ -251,6 +264,7 @@ export const RIVALS: Rival[] = [
   // ---------------------------------------------------------------- Disco Inferno
   {
     id: 'jelly',
+    balls: { strike: 'Ruby Wobble', spare: 'Rainbow Set' },
     name: 'Jelly Jive',
     emoji: '🍮',
     blurb: "Can't stop wobbling. Can't stop dancing. Can't always aim.",
@@ -276,6 +290,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'mango',
+    balls: { strike: 'Ripe Mango', spare: 'Sorbet Swirl' },
     name: 'Mango Tango',
     emoji: '🥭',
     blurb: 'Smooth moves, ripe timing, and a big sweeping hook.',
@@ -301,6 +316,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'lemon',
+    balls: { strike: 'Lemon Twist', spare: 'Lime Zest' },
     name: 'Lemon Twist',
     emoji: '🍋',
     blurb: 'Sharp, sour and spins it in from the left.',
@@ -327,6 +343,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'annie',
+    balls: { strike: 'Glitter Glam', spare: 'Mirror Ball' },
     name: 'Aubergine Annie',
     emoji: '🍆',
     blurb: 'The Disco Inferno champion. Glossy, glamorous and never misses a beat.',
@@ -354,6 +371,7 @@ export const RIVALS: Rival[] = [
   // ---------------------------------------------------------------- Rooftop at Sunset
   {
     id: 'sunny',
+    balls: { strike: 'Fried Egg', spare: 'Scrambled' },
     name: 'Sunny Side',
     emoji: '🍳',
     blurb: 'Always looking up. Bowls early, bowls cheerful, bowls well.',
@@ -379,6 +397,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'lolly',
+    balls: { strike: 'Swirl Pop', spare: 'Rocket Lolly' },
     name: 'Ice Lolly Lou',
     emoji: '🍭',
     blurb: 'Cool as anything, even at sunset. Throws it hard with a quick little hook.',
@@ -404,6 +423,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'kiwi',
+    balls: { strike: 'Fuzzy Skin', spare: 'Kiwi Slice' },
     name: 'Kiwi Kai',
     emoji: '🥝',
     blurb: 'Fuzzy outside, sharp inside. Reads the breeze like a book.',
@@ -430,6 +450,7 @@ export const RIVALS: Rival[] = [
   },
   {
     id: 'russet',
+    balls: { strike: 'Lumpy Russet', spare: 'Hash Brown' },
     name: 'Big Russet',
     emoji: '🥔',
     blurb: 'The Rooftop champion. Big, lumpy, and steady as a sack of spuds.',
@@ -457,6 +478,7 @@ export const RIVALS: Rival[] = [
   // ---------------------------------------------------------------- The Golden Pin
   {
     id: 'pumpkin',
+    balls: { strike: 'Jack-o\'-Lantern', spare: 'The Royal Orb' },
     name: 'The Pumpkin King',
     emoji: '🎃',
     blurb: 'Ruler of the Golden Pin. Grand, theatrical, and almost never misses.',
