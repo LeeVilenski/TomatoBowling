@@ -128,7 +128,7 @@ async function main() {
     const rivalRolls = await page.evaluate(() => window.__game.match!.players[1].rolls);
     check(rivalRolls.length > 0, `the rival bowls a real ball (${rivalRolls.join()})`);
 
-    // ⏩ Skip: rush through the rival's turn, then it's yours again
+    // ⏩ Skip: the rival's turn is played out at once, then it's yours again
     await page.evaluate(() => window.__game.startCpu('donut'));
     await page.evaluate(() => {
       const m = window.__game.match!;
@@ -139,7 +139,8 @@ async function main() {
     await page.click('#skip-btn');
     const skipStart = Date.now();
     await page.waitForFunction(() => window.__game.match!.players[1].rolls.length > 0 && window.__game.match!.current === 0 && window.__game.phase === 'aiming', null, { timeout: 180_000 });
-    check(true, `skipping rushes the rival's frame and hands back to you (${((Date.now() - skipStart) / 1000).toFixed(0)} s here)`);
+    const skipped = await page.evaluate(() => window.__game.match!.players[1].rolls);
+    check(true, `skipping plays out the rival's frame (${skipped.join()}) and hands back to you (${((Date.now() - skipStart) / 1000).toFixed(1)} s here)`);
     check(!(await page.isVisible('#skip-btn')), 'the skip button goes away on your turn');
 
     // Career: finish a match against Pickle Pete (one ball left: his, bowled for real)
