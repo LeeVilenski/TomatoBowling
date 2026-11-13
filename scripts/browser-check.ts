@@ -149,6 +149,7 @@ async function main() {
     await page.waitForFunction(() => window.__game.screen === 'gameover', null, { timeout: 180_000 });
     check(await page.isVisible('#go-career'), 'the career result card appears');
     check((await page.textContent('.career-stars'))?.includes('⭐') ?? false, 'it awards stars');
+    check(!(await page.isVisible('#submit-form')), "a short 5-frame career match doesn't go on the leaderboard");
     const save = await page.evaluate(() => window.__game.career);
     check(save.results.pickle?.wins === 1 && !save.inProgress, 'the win is saved and the match is no longer in progress');
     await page.click('#go-career [data-go="career"]');
@@ -157,6 +158,13 @@ async function main() {
     await page.click('[data-go="careerstats"]');
     const statsText = (await page.textContent('#stats-tiles')) ?? '';
     check(statsText.includes('matches') && (await page.textContent('#stats-h2h'))!.includes('Pickle Pete'), 'the career stats page shows your numbers and record');
+
+    // A full 10-frame career match (against Carrot Carl) can go on the leaderboard: your score only
+    const carlLog = [...Array(9).fill([10, 10]).flat(), 10, 10, 10, 10, 10]; // his last ball is bowled for real
+    await page.evaluate((log) => window.__game.startCareerMatch(0, 3, log), carlLog);
+    await page.waitForFunction(() => window.__game.screen === 'gameover', null, { timeout: 180_000 });
+    check(await page.isVisible('#submit-form'), 'a full 10-frame career match offers your score to the leaderboard');
+    check((await page.$$eval('#lb-entries .lb-entry', (els) => els.length)) === 1, "just your score, not the rival's");
 
     // Later venues play under their own lane rule: on the Rooftop, a breeze each frame
     await page.evaluate(() => window.__game.startCareerMatch(3, 0));

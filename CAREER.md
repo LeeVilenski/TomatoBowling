@@ -77,7 +77,7 @@ The rival's turn reuses everything that already exists (pinsetter, replay, score
 - **Unlocks:** each champion beaten unlocks a cosmetic (a ball or suit themed on that venue: a server-rack-patterned ball, a disco glitter suit, a sunset-gradient ball…) and the next venue for free play.
 - **Career stats:** average, best game, strikes, spares converted, splits picked up, head-to-head record against each rival, shown on the ladder screen.
 - **No currency or shop.** The existing unlock system (score/feat → cosmetic) fits the game's tone better than coins, and stays simpler to balance.
-- **Leaderboard:** career scores shouldn't go on the main leaderboard, since short matches and venue rules aren't comparable. A separate "fastest to the Golden Pin" or "total stars" board could come later.
+- **Leaderboard:** your score from a full 10-frame career match can go on the main leaderboard, like any other game (never the rival's). The short 5-frame warm-up matches can't, since the board is for full games. A separate "fastest to the Golden Pin" or "total stars" board could come later.
 
 ---
 
