@@ -1,11 +1,21 @@
-// The Wardrobe screen: pick a tomato ball and a suit for Dave.
+// The Wardrobe screen: pick Dave's strike ball, spare ball and suit.
 import { ITEMS, unlockedIds, type Progress } from '../game/unlocks';
 import { $ } from './screens';
 
 export interface Equipped {
+  /** The strike ball, bowled at a full rack. */
   ball: string;
+  /** The spare ball, for whatever's left standing (can be the same as the strike ball). */
+  spare: string;
   suit: string;
 }
+
+/** Each row of the wardrobe: which slot it fills, and which kind of item goes in it. */
+const ROWS = [
+  { slot: 'ball', kind: 'ball', box: 'wr-balls' },
+  { slot: 'spare', kind: 'ball', box: 'wr-spares' },
+  { slot: 'suit', kind: 'suit', box: 'wr-suits' },
+] as const;
 
 const SWATCHES: Record<string, string> = {
   classic: 'radial-gradient(circle at 35% 30%, #ff6a55, #c81d12)',
@@ -27,12 +37,12 @@ const SWATCHES: Record<string, string> = {
 
 export function renderWardrobe(progress: Progress, equipped: Equipped, equip: (e: Equipped) => void) {
   const owned = unlockedIds(progress);
-  for (const kind of ['ball', 'suit'] as const) {
-    const box = $(kind === 'ball' ? 'wr-balls' : 'wr-suits');
+  for (const { slot, kind, box: boxId } of ROWS) {
+    const box = $(boxId);
     box.innerHTML = '';
     for (const item of ITEMS.filter((i) => i.kind === kind)) {
       const have = owned.has(item.id);
-      const on = equipped[kind] === item.id;
+      const on = equipped[slot] === item.id;
       const b = document.createElement('button');
       b.className = `chip${on ? ' on' : ''}${have ? '' : ' locked'}`;
       b.setAttribute('aria-pressed', String(on));
@@ -44,7 +54,7 @@ export function renderWardrobe(progress: Progress, equipped: Equipped, equip: (e
           $('wr-hint').textContent = `🔒 ${item.name}: ${item.how}.`;
           return;
         }
-        const next = { ...equipped, [kind]: item.id };
+        const next = { ...equipped, [slot]: item.id };
         equip(next);
         $('wr-hint').textContent = '';
         renderWardrobe(progress, next, equip);

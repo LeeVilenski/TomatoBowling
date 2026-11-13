@@ -160,51 +160,122 @@ async function start() {
   let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
   let equipped: Equipped = storage.equipped();
   let speedBonus = 1;
-  /** Balls built so far, by style, so swapping between bowlers' balls doesn't rebuild them. */
+
+  // ---- The balls on the lane: the one in play, and the rest waiting on the return rack ----
+  // Dave has a strike ball and a spare ball (they can be the same one); a rival brings their
+  // own two. Whichever aren't being bowled sit on the rack, and a bowler picks theirs up
+  // once they're on the approach.
+  /** Every ball on the lane right now, by style. */
   const ballModels = new Map<string, THREE.Group>([['classic', ballMesh]]);
-  /** Puts this ball on the lane (and sizes the physics ball to match). */
-  function showBall(style: string) {
-    if (ballMesh.userData.style !== style) {
-      let next = ballModels.get(style);
-      if (!next) {
-        next = createTomatoBall(style);
-        next.userData.style = style;
-        ballModels.set(style, next);
-      }
-      next.position.copy(ballMesh.position);
-      next.quaternion.copy(ballMesh.quaternion);
-      next.visible = ballMesh.visible;
-      scene.remove(ballMesh);
-      ballMesh = next;
-      scene.add(ballMesh);
+  /** The ball being held, rolled or sent home along the chute (null: they're all on the rack). */
+  let inPlay: string | null = 'classic';
+  /** True while the ball in play is rolling home along the chute. */
+  let returning = false;
+  /** Balls on the rack, in the order they queued (the first is at the far end). */
+  let rack: string[] = [];
+  /** Where each ball on the rack is, so they roll along it rather than jump when the queue moves up. */
+  const rackZ = new Map<string, number>();
+  let lastRackTime = performance.now();
+  const radiusOf = (style: string) => (BALL_STYLES[style] ?? BALL_STYLES.classic).radius;
+  function modelFor(style: string) {
+    let model = ballModels.get(style);
+    if (!model) {
+      model = createTomatoBall(style);
+      model.userData.style = style;
+      ballModels.set(style, model);
+      scene.add(model);
     }
-    physics.setBallRadius(BALL_STYLES[style].radius);
+    return model;
   }
-  /** Keeps only the balls in use: Dave's, and the current rival's. */
-  function pruneBalls() {
-    const keep = new Set([equipped.ball, ballMesh.userData.style, ...(rival ? [`${rival.id}-strike`, `${rival.id}-spare`] : [])]);
+  /** The balls that belong on the lane: Dave's two, the rival's two, and the one in play. */
+  function ballSet(): string[] {
+    const set = [equipped.ball, equipped.spare];
+    if (mode === 'cpu' && rival) set.push(`${rival.id}-strike`, `${rival.id}-spare`);
+    if (inPlay) set.push(inPlay);
+    return [...new Set(set)];
+  }
+  /** Brings the lane's balls up to date: new ones join the end of the rack, old ones go. */
+  function rebuildBalls() {
+    const set = ballSet();
     for (const [style, model] of ballModels) {
-      if (keep.has(style)) continue;
+      if (set.includes(style)) continue;
+      scene.remove(model);
       disposeModel(model);
       ballModels.delete(style);
+      rackZ.delete(style);
+    }
+    rack = rack.filter((st) => set.includes(st) && st !== inPlay);
+    for (const st of set) {
+      modelFor(st);
+      if (st !== inPlay && !rack.includes(st)) rack.push(st);
     }
   }
-  /**
-   * The ball for the next throw: a rival picks up their strike ball for a full rack and
-   * their spare ball for anything else; everyone else bowls Dave's.
-   */
-  function ballForTurn() {
-    if (!cpuTurn() || !rival || !match) return equipped.ball;
-    return `${rival.id}-${match.position.standing === 10 ? 'strike' : 'spare'}`;
+  /** Pins standing now (in a match, from the score; in practice, from the lane). */
+  function standingPins() {
+    if (match) return match.position.standing;
+    return physics.pins.filter((_, i) => !physics.isPinRemoved(i) && !physics.isPinDown(i)).length;
   }
-  function equip({ ball, suit }: Equipped) {
+  /**
+   * The ball for the next throw: the strike ball at a full rack, the spare ball for anything
+   * else. A rival bowls their own; everyone else bowls Dave's.
+   */
+  function wantedBall() {
+    const kind = standingPins() === 10 ? 'strike' : 'spare';
+    if (cpuTurn() && rival) return `${rival.id}-${kind}`;
+    return kind === 'strike' ? equipped.ball : equipped.spare;
+  }
+  /** The bowler takes the ball they want off the rack (putting down any other one they had). */
+  function pickUpBall() {
+    const want = wantedBall();
+    if (inPlay === want) return;
+    if (inPlay) rack.push(inPlay); // put down at the back of the queue
+    rack = rack.filter((st) => st !== want);
+    rackZ.delete(want);
+    inPlay = want;
+    ballMesh = modelFor(want);
+    physics.setBallRadius(radiusOf(want));
+    speedBonus = want === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
+    rebuildBalls();
+  }
+  /** The ball that just came home along the chute stays on the rack until it's wanted again. */
+  function dockBall() {
+    if (!inPlay) return;
+    rackZ.set(inPlay, ballMesh.position.z);
+    rack.push(inPlay);
+    inPlay = null;
+  }
+  /** Where the next ball home along the chute will stop: behind the ones already waiting. */
+  function returnSlotZ() {
+    return chute.slotZ(rack.map(radiusOf), physics.ballRadius);
+  }
+  /** Rolls the waiting balls up the rack to their places in the queue. */
+  function placeRackBalls() {
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - lastRackTime) / 1000);
+    lastRackTime = now;
+    const ahead: number[] = [];
+    for (const st of rack) {
+      const model = ballModels.get(st);
+      if (!model) continue;
+      const r = radiusOf(st);
+      const target = chute.slotZ(ahead, r);
+      const z = rackZ.get(st) ?? target;
+      const step = 1.2 * dt;
+      const next = Math.abs(target - z) <= step ? target : z + Math.sign(target - z) * step;
+      rackZ.set(st, next);
+      model.visible = true;
+      chute.onRack(model, next, r);
+      ahead.push(r);
+    }
+  }
+  function equip({ ball, spare, suit }: Equipped) {
     const owned = unlockedIds(progress);
     if (!owned.has(ball)) ball = 'classic';
+    if (!owned.has(spare)) spare = ball;
     if (!owned.has(suit)) suit = 'navy';
-    equipped = { ball, suit };
+    equipped = { ball, spare, suit };
     storage.saveEquipped(equipped);
-    showBall(ballForTurn());
-    speedBonus = ball === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
+    rebuildBalls();
     dave.setOutfit(suit);
   }
 
@@ -376,6 +447,7 @@ async function start() {
 
   /** `exactSpeed` (m/s) is for computer bowlers, which choose a speed rather than a power. */
   function launch(p: number, aimValue: number, spinValue: number, exactSpeed?: number) {
+    if (!inPlay) pickUpBall();
     const speed = exactSpeed ?? (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * speedBonus;
     downBefore = physics.pinsDown();
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
@@ -538,7 +610,6 @@ async function start() {
   function setTurnStatus() {
     if (!match) return;
     const pos = match.position;
-    showBall(ballForTurn());
     // Career: save at each frame boundary (a fresh rack), so the match can be resumed
     if (careerRung && pos.ball === 0 && !match.gameOver) {
       career = { ...career, inProgress: { rival: careerRung.rival, frames: match.frames, log: [...matchLog] } };
@@ -729,8 +800,7 @@ async function start() {
     rivalFig.root.visible = mode === 'cpu' && rival !== null;
     // The rival's throw planner, loaded now so it's ready for their first ball (or a ⏩ Skip)
     if (rivalFig.root.visible) ensurePredictor();
-    showBall(ballForTurn());
-    pruneBalls();
+    rebuildBalls();
     if (rivalFig.root.visible && rival) {
       rivalFig.setHead(rival.head);
       rivalFig.setOutfit(rival.outfit);
@@ -1435,10 +1505,17 @@ async function start() {
     physics.pins.forEach((pin, i) => pinSet.set(i, pin.translation(), pin.rotation(), !physics.isPinRemoved(i)));
     pinSet.commit();
     const held = phase === 'aiming' || phase === 'charging' || phase === 'swinging';
+    // Home from the chute: the ball waits on the rack until someone wants it
+    if (returning && phase !== 'sweeping') dockBall();
+    returning = phase === 'sweeping' && inPlay !== null;
+    // The bowler picks up their ball once they're on the approach (not while walking up)
+    if (held && !handover && !match?.gameOver) pickUpBall();
+    placeRackBalls();
+    if (!inPlay) return;
     ballMesh.visible = true;
     if (phase === 'sweeping') {
-      // The tomato rolls home along the return chute while the pinsetter works
-      ballMesh.visible = chute.ballAt(pinsetter.elapsed, physics.ballRadius, ballMesh);
+      // The ball rolls home along the return chute while the pinsetter works
+      ballMesh.visible = chute.ballAt(pinsetter.elapsed, physics.ballRadius, ballMesh, returnSlotZ());
     } else if (held) {
       bowler.handWorldPosition(ballMesh.position).add(BALL_IN_HAND);
       ballMesh.quaternion.identity();
@@ -1573,6 +1650,7 @@ async function start() {
       const [you, them] = m.totals();
       const t = humanise(r, planThrow(r, target, tracer), pressureFor(m.position.frame, them, you, m.frames), undefined, !target.fullRack);
       aimX = t.x;
+      physics.setBallRadius(radiusOf(`${r.id}-${target.fullRack ? 'strike' : 'spare'}`));
       physics.holdBall(aimX);
       physics.step();
       downBefore = physics.pinsDown();

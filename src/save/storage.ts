@@ -33,8 +33,12 @@ export const storage = {
   nickname: () => read<string>('nickname', ''),
   progress: <T>(fallback: T) => read<T>('progress', fallback),
   saveProgress: (p: unknown) => write('progress', p),
-  equipped: () => read<{ ball: string; suit: string }>('equipped', { ball: 'classic', suit: 'navy' }),
-  saveEquipped: (e: { ball: string; suit: string }) => write('equipped', e),
+  /** Dave's strike ball, spare ball and suit (saves from before spare balls use the one ball for both). */
+  equipped: () => {
+    const e = read<{ ball: string; spare?: string; suit: string }>('equipped', { ball: 'classic', suit: 'navy' });
+    return { ...e, spare: e.spare ?? e.ball };
+  },
+  saveEquipped: (e: { ball: string; spare: string; suit: string }) => write('equipped', e),
   flag: (name: string) => read<boolean>('flag-' + name, false),
   setFlag: (name: string) => write('flag-' + name, true),
   /** Career mode's save (checked and tidied by loadCareer). */
