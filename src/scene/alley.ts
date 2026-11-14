@@ -152,6 +152,18 @@ export function buildAlley(scene: THREE.Scene) {
   const pitMat = new THREE.MeshStandardMaterial({ color: '#0d0912', roughness: 1 });
   scene.add(box(OUTER_HALF * 2, 0.02, DECK_END_Z - PIT_END_Z, pitMat, 0, -PIT_DEPTH, (DECK_END_Z + PIT_END_Z) / 2));
   scene.add(box(OUTER_HALF * 2 + 0.12, 1.2, 0.1, pitMat, 0, 0, PIT_END_Z - 0.05));
+  // Front wall of the pit, under the end of the pin deck. The replay camera looks back at it
+  // from behind the pins; without it you could see under the lane (to the sky, on the Rooftop).
+  // Full width below the gutters, then lane-width up to the deck, with a wooden edge.
+  const wallTop = -0.17;
+  scene.add(box(OUTER_HALF * 2, wallTop + PIT_DEPTH, 0.04, pitMat, 0, (wallTop - PIT_DEPTH) / 2, DECK_END_Z + 0.02));
+  scene.add(box(LANE_WIDTH, -wallTop - 0.002, 0.04, edgeMat, 0, wallTop / 2 - 0.001, DECK_END_Z + 0.02));
+  // ...and up to the underside of each gutter, following its slope
+  for (const plate of gutterPlates()) {
+    const m = box(plate.halfWidth * 2, 0.1, 0.04, pitMat, plate.x + Math.sin(plate.angle) * 0.06, plate.y - 0.01 - Math.cos(plate.angle) * 0.06, DECK_END_Z + 0.02);
+    m.rotation.z = plate.angle;
+    scene.add(m);
+  }
 
   // Masking unit above the pins: a red panel with a tomato-ish stripe
   const maskMat = new THREE.MeshStandardMaterial({ color: '#c8281e', roughness: 0.6, emissive: '#3a0805' });
