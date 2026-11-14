@@ -32,6 +32,7 @@ Also: a "How to bowl" card on your first game (and in the pause menu), a Graphic
 | Server Room Lanes | Racks of blinking servers, cable trays, a terminal screen | "Packet Loss" (chiptune) |
 | Disco Inferno | Mirror ball, sweeping spotlights, flashing dance floor | "Disco Dave" (disco) |
 | Rooftop at Sunset | Open sky, city skyline, string lights | "Bossa Marinara" (bossa nova) |
+| MEM *(unlock: become champion of Server Room Lanes)* | The IT engineers' den: a damp basement with grubby computer desks down both walls, dead CRTs, skips full of old hardware, flickering tubes, a leaking ceiling and a firmware update stuck at 99% | "Thermal Throttle" (glum lo-fi) |
 
 **Replay:** after any throw, tap **🎥 Replay** (or press V) to watch it again from a camera inside the pinsetter, peeking out from under the masking unit. Every pin is in view as the ball rolls down the lane towards them; the camera tilts down as it arrives and drops into slow motion for the impact, juice and all. Strikes replay automatically. Tap to skip.
 

@@ -7,8 +7,9 @@
 //   disco  — "Disco Dave": four-on-the-floor, octave bass and string pads (Disco Inferno)
 //   bossa  — "Bossa Marinara": bossa nova guitar, rim clave and flute (Rooftop at Sunset)
 //   golden — "Golden Glory": a grand big-band swing in B♭ for the career final (The Golden Pin)
+//   mem    — "Thermal Throttle": a slow, glum lo-fi loop in D minor, with error beeps (MEM)
 
-export type TrackId = 'lounge' | 'chip' | 'disco' | 'bossa' | 'golden';
+export type TrackId = 'lounge' | 'chip' | 'disco' | 'bossa' | 'golden' | 'mem';
 
 type Inst =
   | 'bass' | 'epiano' | 'vibes' | 'ride' | 'hat' | 'brush'
@@ -275,7 +276,42 @@ function golden(): Track {
   return { id: 'golden', name: 'Golden Glory', bpm: 132, beats: beat, level: 0.85, events: ev };
 }
 
-const TRACKS: Record<TrackId, Track> = { lounge: lounge(), chip: chip(), disco: disco(), bossa: bossa(), golden: golden() };
+// ---------- Track 6: Thermal Throttle (slow lo-fi in D minor) ----------
+function mem(): Track {
+  // MIDI: D2=38 B♭2=46 G2=43 A2=45
+  // A tired loop that never quite resolves: a droning pad, a sluggish bass, a lazy
+  // arpeggio and, every so often, the beep of a machine that won't boot.
+  const form = [C(38, 'min'), C(38, 'm7'), C(46, 'maj7'), C(45, 'dom7'), C(43, 'm7'), C(38, 'min'), C(46, 'maj7'), C(45, 'hd')];
+  const ev: Ev[] = [];
+  const rand = seeded(404);
+  let beat = 0;
+  for (let pass = 0; pass < 2; pass++) {
+    form.forEach((ch, idx) => {
+      ev.push({ beat, inst: 'pad', notes: voice(ch, 53, 67), dur: 3.8, vel: 0.55 });
+      // Bass: the root on one, a late fifth that drags behind the beat
+      ev.push({ beat, inst: 'bass', midi: ch.root, dur: 1.6, vel: 0.9 });
+      ev.push({ beat: beat + 2.6, inst: 'bass', midi: ch.root + (ch.q === 'hd' ? 6 : 7) - 12, dur: 1, vel: 0.65 });
+      // A slow triangle arpeggio, a note dropped here and there
+      const tones = TONES[ch.q];
+      for (let e = 0; e < 8; e++) {
+        if (rand() < 0.2) continue;
+        ev.push({ beat: beat + e / 2, inst: 'tri', midi: ch.root + 24 + tones[e % tones.length], dur: 0.45, vel: 0.35 });
+      }
+      // Error beeps: one long, two short (and on the second pass, a little lead line)
+      if (idx % 4 === 3) for (const [b, d] of [[3, 0.35], [3.5, 0.12], [3.75, 0.12]] as const) ev.push({ beat: beat + b, inst: 'square', midi: 86, dur: d, vel: 0.6 });
+      if (pass === 1 && idx % 2 === 0) phrase(ch, beat, [0.5, 1.5, 2, 3], rand, 62, 76, 'vibes', ev, 1.4);
+      // Lazy drums: kick on one, a dull snare on three, soft hats
+      ev.push({ beat, inst: 'kick', dur: 0.3, vel: 0.7 });
+      if (idx % 2 === 1) ev.push({ beat: beat + 1.75, inst: 'kick', dur: 0.3, vel: 0.45 });
+      ev.push({ beat: beat + 2, inst: 'chipnoise', dur: 0.2, vel: 0.5 });
+      for (let e = 0; e < 8; e++) ev.push({ beat: beat + e / 2, inst: 'hat', dur: 0.05, vel: e % 2 ? 0.35 : 0.55 });
+      beat += 4;
+    });
+  }
+  return { id: 'mem', name: 'Thermal Throttle', bpm: 78, beats: beat, level: 0.85, events: ev };
+}
+
+const TRACKS: Record<TrackId, Track> = { lounge: lounge(), chip: chip(), disco: disco(), bossa: bossa(), golden: golden(), mem: mem() };
 export const TRACK_NAMES: Record<TrackId, string> = Object.fromEntries(Object.values(TRACKS).map((t) => [t.id, t.name])) as Record<TrackId, string>;
 
 export function loopSeconds(id: TrackId) {

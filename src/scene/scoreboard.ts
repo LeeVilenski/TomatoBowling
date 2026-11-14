@@ -19,6 +19,8 @@ export const SCORE_THEMES: Record<string, ScoreTheme> = {
   classic: { bg: '#100818', panel: '#1d1029', grid: '#4a2e66', ink: '#fff4e6', dim: '#b9a6c9', accent: '#ff4a3a', accent2: '#ffd23a', font: '"Trebuchet MS", "Arial Black", sans-serif' },
   server: { bg: '#020a05', panel: '#06160c', grid: '#1d5c33', ink: '#c8ffd9', dim: '#5fae7a', accent: '#3cff7a', accent2: '#36c8ff', font: '"Courier New", monospace' },
   disco: { bg: '#12041a', panel: '#22082e', grid: '#6a1f7a', ink: '#fff0fb', dim: '#d9a6d6', accent: '#ff3cc7', accent2: '#ffe03c', font: '"Trebuchet MS", "Arial Black", sans-serif' },
+  // MEM: a tired amber-phosphor terminal
+  mem: { bg: '#0d0a02', panel: '#1a1406', grid: '#5a4310', ink: '#ffcf6a', dim: '#a8822e', accent: '#ffb000', accent2: '#c8ff5a', font: '"Courier New", monospace' },
   rooftop: { bg: '#1e0f1c', panel: '#311626', grid: '#7a3a4c', ink: '#fff2e2', dim: '#e6b9a6', accent: '#ff8a4c', accent2: '#ffe08a', font: '"Trebuchet MS", "Arial Black", sans-serif' },
 };
 
