@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseTarget, humanise, planThrow, POCKET_X, pressureFor, xAtZ, type BowlerSkill, type PathTracer } from './ai';
+import { chooseTarget, HOT_STREAK_WOBBLE, humanise, planThrow, POCKET_X, pressureFor, strikeRun, xAtZ, type BowlerSkill, type PathTracer } from './ai';
 import { HEAD_PIN_Z, MAX_AIM_ANGLE, pinSpots } from './dimensions';
 
 const straight: BowlerSkill = {
@@ -84,6 +84,15 @@ describe('humanise', () => {
     expect(spare.angle - plan.angle).toBeCloseTo((first.angle - plan.angle) / 2);
   });
 
+  it('gets wobblier on the ball after a double (but not on spares)', () => {
+    const calm = humanise(straight, plan, 0, () => 1, false, 1);
+    const hot = humanise(straight, plan, 0, () => 1, false, 2);
+    const spare = humanise(straight, plan, 0, () => 1, true, 5);
+    expect(calm.angle - plan.angle).toBeCloseTo(straight.accuracy.angle);
+    expect(hot.angle - plan.angle).toBeCloseTo(straight.accuracy.angle * HOT_STREAK_WOBBLE[2]);
+    expect(spare.angle - plan.angle).toBeCloseTo(straight.accuracy.angle);
+  });
+
   it('keeps throws within the same limits as the player', () => {
     const wild = humanise(straight, plan, 1, () => 100);
     expect(wild.angle).toBeLessThanOrEqual(MAX_AIM_ANGLE);
@@ -97,5 +106,17 @@ describe('pressureFor', () => {
     expect(pressureFor(7, 120, 60)).toBe(0);
     expect(pressureFor(7, 120, 110)).toBeCloseTo(0.4);
     expect(pressureFor(9, 150, 152)).toBe(1);
+  });
+});
+
+describe('strikeRun', () => {
+  it('counts the strikes in a row just bowled', () => {
+    expect(strikeRun([])).toBe(0);
+    expect(strikeRun([10, 10])).toBe(2);
+    expect(strikeRun([10, 7, 2, 10])).toBe(1);
+    expect(strikeRun([10, 10, 7])).toBe(0);
+    // A spare that knocks down all ten on the second ball isn't a strike
+    expect(strikeRun([0, 10])).toBe(0);
+    expect(strikeRun([0, 10, 10, 10])).toBe(2);
   });
 });

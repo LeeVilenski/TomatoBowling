@@ -141,8 +141,30 @@ export function gaussian(random: () => number = Math.random): number {
 }
 
 /**
+ * Extra error on a first ball after a run of strikes: even the best feel it on a double.
+ * Keeps a strong rival's average while making turkeys and 250+ games rarer (strike runs are
+ * what make a big game). Indexed by strikes in a row; longer runs use the last entry.
+ */
+export const HOT_STREAK_WOBBLE = [1, 1, 1.6, 2];
+
+/** How many strikes in a row a bowler has just bowled (0 if the last ball wasn't a strike). */
+export function strikeRun(rolls: number[]): number {
+  let fresh = true;
+  let run = 0;
+  for (const r of rolls) {
+    if (fresh && r === 10) run++;
+    else {
+      run = 0;
+      fresh = !fresh;
+    }
+  }
+  return run;
+}
+
+/**
  * Adds the bowler's human error to a planned throw. `pressure` (0–1) is how tense the
- * moment is: the 10th frame, or a close match late on.
+ * moment is: the 10th frame, or a close match late on. `run` is the bowler's strikes in a
+ * row going into this ball (see HOT_STREAK_WOBBLE).
  */
 export function humanise(
   skill: BowlerSkill,
@@ -150,8 +172,10 @@ export function humanise(
   pressure: number,
   noise: () => number = gaussian,
   spare = false,
+  run = 0,
 ): ThrowParams {
-  const k = (1 + skill.nerves * clamp(pressure, 0, 1)) * (spare ? (skill.spareError ?? 1) : 1);
+  const streak = spare ? 1 : HOT_STREAK_WOBBLE[Math.min(run, HOT_STREAK_WOBBLE.length - 1)];
+  const k = (1 + skill.nerves * clamp(pressure, 0, 1)) * (spare ? (skill.spareError ?? 1) : 1) * streak;
   const a = skill.accuracy;
   return {
     x: clamp(plan.x + noise() * a.x * k, -MAX_START_X, MAX_START_X),
