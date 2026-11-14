@@ -398,7 +398,7 @@ body.replaying #aim-legend { visibility: hidden; }
 .chip .stat i.on { background: #ffd23a; }
 #wardrobe .card { max-height: 78dvh; padding: 18px 16px; }
 #wardrobe .card h2 { margin-bottom: 0; }
-#wr-hint:not(:empty) { position: sticky; bottom: 0; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #2a1840; border: 1px solid #4a2e66; box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.35); }
+#wr-hint:not(:empty) { position: sticky; bottom: 0; z-index: 1; opacity: 1; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #2a1840; border: 1px solid #4a2e66; box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.35); }
 #wardrobe .buttons { margin-top: 10px; }
 
 /* Tutorial */

@@ -44,7 +44,7 @@ const MAX_ANGLE = MAX_AIM_ANGLE;
 const ARROWS_Z = -4.57; // the targeting arrows, 15 ft down the lane
 const BALL_START_Z = -0.3;
 /** Shown when a wide split is left: the ball can't reach both pins, so one pin has to go across. */
-const SPLIT_TIP = 'split! hit the inside of one pin hard so it bounces off the side wall and back across.';
+const SPLIT_TIP = 'split! Hit the inside of one pin hard so it bounces off the side wall and back across.';
 // Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
@@ -363,6 +363,8 @@ async function start() {
   let settleTime = 0;
   let resultTime = 0;
   let downBefore = 0;
+  /** Pin numbers standing when the ball was thrown (for the scoreboard: "the 7-10!"). */
+  let standingAtThrow: number[] = [];
   let lastThrow = { speed: 0, spin: 0, knocked: 0 };
   let reaction: ReactionKind = 'meh';
   let reactionShown = false;
@@ -462,6 +464,7 @@ async function start() {
     applyBall(inPlay ?? 'classic');
     const speed = exactSpeed ?? powerToSpeed(p);
     downBefore = physics.pinsDown();
+    standingAtThrow = physics.standingPins();
     physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue * ballFx.spin });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
     splashed.clear();
@@ -526,7 +529,7 @@ async function start() {
 
     if (mode === 'practice') {
       practiceStreak = reaction === 'strike' ? practiceStreak + 1 : fresh ? 0 : practiceStreak;
-      celebrate(reaction, practiceStreak);
+      celebrate(reaction, practiceStreak, true, { knocked, splitPickup: reaction === 'spare' && physics.splitShot });
       if (practiceRack) {
         setStatus(knocked === standingBefore ? 'Picked it up! 🍅' : `Missed — ${standingBefore - knocked} left`);
         nextSetter = 'rerack';
@@ -547,7 +550,7 @@ async function start() {
     const progressMade = tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other');
     // A rival's strikes and splits don't unlock anything for you
     if (!rivalBall) gainProgress(progressMade);
-    celebrate(reaction, tracker.streak, !rivalBall);
+    celebrate(reaction, tracker.streak, !rivalBall, { knocked, splitPickup: reaction === 'spare' && (physics.splitShot || !!progressMade.splitConverted) });
     outcome = match.recordRoll(knocked);
     matchLog.push(knocked);
     renderScorecard(scorecardEl, match);
@@ -557,16 +560,26 @@ async function start() {
     nextSetter = outcome.freshRack ? 'rerack' : 'clear';
   }
 
-  /** The turkey banner, and which animation the overhead scoreboard plays for this ball. */
-  function celebrate(kind: ReactionKind, streak: number, banner = true) {
+  /**
+   * The turkey banner, and which animation the overhead scoreboard plays for this ball.
+   * Strikes, doubles, turkeys and gutter balls get a glance up at the monitor; the rest just play on it.
+   */
+  function celebrate(kind: ReactionKind, streak: number, banner = true, ball: { knocked?: number; splitPickup?: boolean } = {}) {
     const run = kind === 'strike' ? streakName(streak) : null;
+    const after = physics.standingPins();
+    const pinsName = (pins: number[]) => pins.join('-');
     if (run) {
       if (banner) showBanner(run);
       autoReplayAt = AUTO_REPLAY_AFTER_BANNER;
       pendingAnim = { kind: 'turkey', label: run, sub: `${streak} strikes in a row!`, glance: true };
-    } else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
+    } else if (kind === 'strike' && streak === 2) pendingAnim = { kind: 'double', glance: true };
+    else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
     else if (kind === 'gutter') pendingAnim = { kind: 'gutter', glance: true };
+    else if (kind === 'spare' && ball.splitPickup) pendingAnim = { kind: 'splitPickup', sub: pinsName(standingAtThrow), glance: false };
     else if (kind === 'spare') pendingAnim = { kind: 'spare', glance: false };
+    else if (kind === 'split') pendingAnim = { kind: 'split', sub: pinsName(after), glance: false };
+    else if (kind === 'miss') pendingAnim = { kind: 'miss', sub: after.length === 1 ? `pin ${after[0]}` : `pins ${after.join(',')}`, glance: false };
+    else if (kind === 'good' && ball.knocked === 9) pendingAnim = { kind: 'nine', sub: after.length === 1 ? `the ${after[0]} pin stayed up` : '9 pins', glance: false };
     else pendingAnim = null;
   }
 
@@ -1907,8 +1920,8 @@ async function start() {
     },
     scoreboard,
     /** Play a scoreboard animation as if a ball had just been thrown, for checking how it looks. */
-    celebrate(kind: ReactionKind, streak = 1) {
-      celebrate(kind, streak);
+    celebrate(kind: ReactionKind, streak = 1, ball: { knocked?: number; splitPickup?: boolean } = {}) {
+      celebrate(kind, streak, true, ball);
       runPinsetter('rerack');
     },
     /** Jump the replay to a moment (seconds into the throw), for checking camera shots. */

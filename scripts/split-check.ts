@@ -10,6 +10,9 @@ const AT_LEAST: Record<string, number> = { '7-10': 0.03, '4-6': 0.05, '6-7': 0.0
 async function main() {
   const ph = await BowlingPhysics.create();
   ph.stemBumps = false;
+  // Repeatable: the ball leaves the hand at a random angle, which nudges results run to run
+  let seed = 2024;
+  ph.rng = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   let failed = false;
   const check = (ok: boolean, msg: string) => {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`);
