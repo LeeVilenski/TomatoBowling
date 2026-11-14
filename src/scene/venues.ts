@@ -1170,7 +1170,7 @@ function mem(scores: THREE.Texture): Built {
     std('#ffffff', { map: floorTex, roughness: 1 }),
   );
   // A rotten-tomato emblem on a nicotine-stained panel; the sign has seen better days
-  const { sign } = signage(g, 'MEM', '★ OUT OF MEMORY ★', '#a6ff3a', '#ffb02e', 'LANE 0', '#6e6a4c', '#3a3826', '#8a5a1c', '#7a4a26');
+  const { sign } = signage(g, 'MEM', '★ OUT OF MEMORY ★', '#a6ff3a', '#ffb02e', 'LANE 000', '#6e6a4c', '#3a3826', '#8a5a1c', '#7a4a26');
   const signMat = sign.material as THREE.MeshBasicMaterial;
   g.add(scoreMonitor(scores, CEIL_Y));
 
@@ -1546,44 +1546,77 @@ function mem(scores: THREE.Texture): Built {
     hanging.push(h);
   }
 
-  // ---- Behind the pins: a projector screen stuck on a firmware update since nobody knows when ----
-  const fwCanvas = document.createElement('canvas');
-  fwCanvas.width = 512;
-  fwCanvas.height = 256;
-  const fwTex = new THREE.CanvasTexture(fwCanvas);
-  fwTex.colorSpace = THREE.SRGBColorSpace;
-  const drawFirmware = (spin: number) => {
-    const c = fwCanvas.getContext('2d')!;
-    c.fillStyle = '#16180f';
-    c.fillRect(0, 0, 512, 256);
-    c.fillStyle = '#c8cfa0';
-    c.font = '700 30px "Courier New", monospace';
-    c.textAlign = 'center';
-    c.fillText('UPDATING FIRMWARE...', 256, 64);
-    c.strokeStyle = '#c8cfa0';
-    c.lineWidth = 3;
-    c.strokeRect(56, 100, 400, 34);
-    c.fillStyle = '#9ad040';
-    c.fillRect(62, 106, 388 * 0.99, 22);
-    c.fillStyle = '#c8cfa0';
-    c.font = '700 24px "Courier New", monospace';
-    c.fillText('99%   DO NOT POWER OFF', 256, 176);
-    c.font = '18px "Courier New", monospace';
-    c.fillStyle = '#7a8060';
-    c.fillText('started: 3 years ago', 256, 222);
-    for (let k = 0; k < 8; k++) {
-      const a = (k / 8) * Math.PI * 2 + spin;
-      c.fillStyle = `rgba(200, 207, 160, ${((k + 1) / 8) * 0.9})`;
-      c.beginPath();
-      c.arc(460 + Math.cos(a) * 14, 60 + Math.sin(a) * 14, 3, 0, Math.PI * 2);
-      c.fill();
-    }
-    fwTex.needsUpdate = true;
+  // ---- Corkboards crammed with junk, and vines creeping in through the damp ----
+  const cork = (z: number, side: number, y: number) => {
+    const tex = canvasTexture(384, 256, (c) => {
+      c.fillStyle = '#a07848';
+      c.fillRect(0, 0, 384, 256);
+      for (let k = 0; k < 900; k++) {
+        c.fillStyle = `rgba(${rand() < 0.5 ? '70, 46, 20' : '190, 150, 100'}, 0.5)`;
+        c.fillRect(rand() * 384, rand() * 256, 2, 2);
+      }
+      const bits = ['INVOICE', 'TODO', 'PIN: 1234', 'WIFI??', 'CALL BACK', 'TICKET #9', 'P/W ON BACK', 'LUNCH?', 'REBOOT', 'BROKEN', 'CHASE IT', ':('];
+      const colours = ['#f2e86a', '#f6a6c0', '#9ad8f0', '#e8e4d4', '#b8e890', '#ffffff'];
+      for (let k = 0; k < 22; k++) {
+        const w = 50 + rand() * 60;
+        const h = 40 + rand() * 50;
+        const x = rand() * (384 - w);
+        const yy = rand() * (256 - h);
+        c.save();
+        c.translate(x + w / 2, yy + h / 2);
+        c.rotate((rand() - 0.5) * 0.5);
+        c.fillStyle = pick(colours);
+        c.fillRect(-w / 2, -h / 2, w, h);
+        c.fillStyle = 'rgba(30, 30, 40, 0.8)';
+        c.font = '700 11px "Courier New", monospace';
+        c.fillText(pick(bits), -w / 2 + 4, -h / 2 + 16);
+        for (let l = 0; l < 3; l++) c.fillRect(-w / 2 + 4, -h / 2 + 24 + l * 7, w * (0.3 + rand() * 0.5), 1.5);
+        c.fillStyle = pick(['#d02020', '#2040d0', '#20a040']);
+        c.beginPath();
+        c.arc(0, -h / 2 + 5, 4, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+      c.strokeStyle = '#5a4026';
+      c.lineWidth = 14;
+      c.strokeRect(0, 0, 384, 256);
+    });
+    const p = plane(1.2, 0.8, std('#ffffff', { map: tex, roughness: 1 }), [side * (WALL_X - 0.015), y, z], [0, -side * (Math.PI / 2), 0]);
+    p.rotation.z = (rand() - 0.5) * 0.06;
+    props.add(p);
   };
-  drawFirmware(0);
-  const fwMat = new THREE.MeshBasicMaterial({ map: fwTex, toneMapped: false });
-  g.add(plane(2.6, 1.3, fwMat, [0, 2.85, BACK_Z + 0.05]));
-  g.add(boxAt(2.8, 0.06, 0.1, housing, 0, 3.53, BACK_Z + 0.08));
+  cork(-0.9, -1, 2.0);
+  cork(-11.5, -1, 2.1);
+  cork(-6.4, 1, 2.0);
+  cork(1.6, 1, 2.2);
+
+  const leafMats = [std('#3d6a24', { roughness: 0.9, side: THREE.DoubleSide }), std('#4f7c2c', { roughness: 0.9, side: THREE.DoubleSide }), std('#5a6a26', { roughness: 0.9, side: THREE.DoubleSide })];
+  const stem = std('#4a3a1c', { roughness: 1 });
+  const leafGeo = new THREE.CircleGeometry(0.06, 6);
+  /** A vine creeping out of a ceiling corner and trailing down the wall. */
+  const vine = (side: number, z: number, len: number) => {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const f = i / 8;
+      pts.push(new THREE.Vector3(side * (WALL_X - 0.04 - rand() * 0.05), CEIL_Y - f * len, z + Math.sin(f * 6 + rand()) * 0.35 + (rand() - 0.5) * 0.1));
+    }
+    // A run along the ceiling edge too
+    for (let i = 1; i <= 4; i++) pts.unshift(new THREE.Vector3(side * (WALL_X - 0.05), CEIL_Y - 0.03, pts[0].z + 0.4 * (rand() < 0.5 ? 1 : -1) * 0.5 + i * 0.3));
+    const curve = new THREE.CatmullRomCurve3(pts);
+    props.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.012, 5), stem));
+    for (let k = 0; k < 70; k++) {
+      const at = curve.getPoint(rand());
+      const leaf = new THREE.Mesh(leafGeo, pick(leafMats));
+      leaf.position.set(at.x - side * 0.03, at.y + (rand() - 0.5) * 0.1, at.z + (rand() - 0.5) * 0.14);
+      leaf.rotation.set((rand() - 0.5) * 1.2, -side * (Math.PI / 2) + (rand() - 0.5) * 1.2, rand() * Math.PI);
+      leaf.scale.setScalar(0.7 + rand() * 0.7);
+      props.add(leaf);
+    }
+  };
+  vine(-1, -3.2, 2.6);
+  vine(1, -9.0, 2.2);
+  vine(-1, -14.2, 1.8);
+  vine(1, 3.4, 2.4);
 
   // The neighbouring lanes are closed: hazard tape across them (it's where the skips went)
   const tape = canvasTexture(256, 16, (c) => {
@@ -1622,7 +1655,6 @@ function mem(scores: THREE.Texture): Built {
 
   let lights: Lighting | null = null;
   const HEMI = 0.68;
-  let lastSpin = -1;
   let lastFlicker = -1;
   return {
     group: g,
@@ -1634,10 +1666,6 @@ function mem(scores: THREE.Texture): Built {
       drip.visible = cycle < 0.85;
       // Hanging cables sway a little
       hanging.forEach((h, i) => (h.rotation.z = Math.sin(t * 0.8 + i * 1.7) * 0.06));
-      if (Math.floor(t * 4) !== lastSpin) {
-        lastSpin = Math.floor(t * 4);
-        drawFirmware(lastSpin * 0.6);
-      }
       if (t - lastFlicker < 0.05) return;
       lastFlicker = t;
       // Two tubes stutter in bursts; the room dims a touch with the worst of them
