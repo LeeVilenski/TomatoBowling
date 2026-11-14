@@ -391,8 +391,14 @@ body.replaying #aim-legend { visibility: hidden; }
 .chip .swatch.suit { border-radius: 8px; }
 .chip.locked .swatch::after { content: '🔒'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; }
 .chip .how { font-size: 10px; font-weight: 400; opacity: 0.85; line-height: 1.2; }
+.chip .stats { display: flex; flex-direction: column; gap: 2px; }
+.chip .stat { display: flex; align-items: center; gap: 2px; }
+.chip .stat b { width: 9px; font-size: 8px; font-weight: 800; opacity: 0.75; text-align: left; }
+.chip .stat i { width: 6px; height: 4px; border-radius: 1px; background: rgba(255, 255, 255, 0.18); }
+.chip .stat i.on { background: #ffd23a; }
 #wardrobe .card { max-height: 78dvh; padding: 18px 16px; }
 #wardrobe .card h2 { margin-bottom: 0; }
+#wr-hint:not(:empty) { position: sticky; bottom: 0; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #2a1840; border: 1px solid #4a2e66; box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.35); }
 #wardrobe .buttons { margin-top: 10px; }
 
 /* Tutorial */

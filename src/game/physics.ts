@@ -420,11 +420,14 @@ export class BowlingPhysics {
     return pts;
   }
 
-  /** Swap to a different-sized ball (same weight), e.g. the cherry tomato. */
-  setBallRadius(r: number) {
+  ballMass = BALL_MASS;
+
+  /** Swap to a different ball: a different size (e.g. the cherry tomato) and/or weight (kg). */
+  setBallRadius(r: number, mass = BALL_MASS) {
     this.ballRadius = r;
+    this.ballMass = mass;
     this.ballCollider.setRadius(r);
-    this.ballCollider.setMass(BALL_MASS);
+    this.ballCollider.setMass(mass);
   }
 
   /** Pin indices (0–9) the ball is touching right now. */

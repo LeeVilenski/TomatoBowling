@@ -123,7 +123,13 @@ export const BALL_STYLES: Record<string, BallStyle> = {
   green: { colour: '#7cc43a', radius: BALL_RADIUS, roughness: 0.25, metalness: 0.0, leaf: '#1f6b1c' },
   heirloom: { colour: '#e0261b', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.05, leaf: '#2f8f2a', stripes: ['#d9361a', '#ffb02e', '#8bbf3a'] },
   golden: { colour: '#ffcc3a', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.7, leaf: '#c99a1e', glow: '#4a3300' },
+  tomatillo: { colour: '#a8cf5e', radius: BALL_RADIUS, roughness: 0.35, metalness: 0.0, leaf: '#c9b779', lobes: 4, lobeDepth: 0.05 },
+  beefsteak: { colour: '#c81d14', radius: 0.115, roughness: 0.22, metalness: 0.05, leaf: '#2f8f2a', lobes: 5, lobeDepth: 0.06 },
+  plum: { colour: '#b0102a', radius: BALL_RADIUS, roughness: 0.14, metalness: 0.08, leaf: '#2f8f2a', lobes: 2 },
+  sundried: { colour: '#8a1e12', radius: BALL_RADIUS, roughness: 0.75, metalness: 0.0, leaf: '#4f6b22', lobes: 9, lobeDepth: 0.07 },
+  krim: { colour: '#4a1a1e', radius: BALL_RADIUS, roughness: 0.2, metalness: 0.1, leaf: '#2f8f2a', stripes: ['#4a1a1e', '#3a4a1c', '#6b1f22'] },
   // Career rewards
+  discoball: { colour: '#ffffff', radius: BALL_RADIUS, roughness: 0.08, metalness: 0.9, leaf: '#ff3cc7', paint: [{ fill: '#cfd2e6' }, { grid: '#3a3d55', cells: 28, width: 2 }, { speckle: ['#ffffff', '#ff9ae6', '#9ae6ff'], count: 140, size: 0.012 }] },
   circuit: { colour: '#1f6b34', radius: BALL_RADIUS, roughness: 0.3, metalness: 0.35, leaf: '#d4a017', stripes: ['#1a5a2c', '#d4a017', '#0f3d1e'], glow: '#06200e' },
   sunset: { colour: '#ff8a4c', radius: BALL_RADIUS, roughness: 0.18, metalness: 0.1, leaf: '#2f8f2a', stripes: ['#ff8a4c', '#c8406a', '#ffd23a'] },
   // The computer rivals' own strike and spare balls (not for Dave)
