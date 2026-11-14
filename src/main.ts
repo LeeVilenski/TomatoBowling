@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './style.css';
-import { BALL_RADIUS, HEAD_PIN_Z, LANE_HALF, MAX_AIM_ANGLE, MAX_START_X, MAX_THROW_SPEED, MIN_THROW_SPEED, OUTER_HALF } from './game/dimensions';
+import { BALL_MASS, BALL_RADIUS, DECK_END_Z, HEAD_PIN_Z, LANE_HALF, MAX_AIM_ANGLE, MAX_START_X, MAX_THROW_SPEED, MIN_THROW_SPEED, OUTER_HALF } from './game/dimensions';
 import { BowlingPhysics, PHYSICS_DT, STANDARD_LANE, type LaneConditions } from './game/physics';
 import { Match, type RollOutcome } from './game/match';
 import { Pinsetter, type PinsetterMode } from './game/pinsetter';
@@ -14,6 +14,7 @@ import type { SwipeThrow } from './input/swipe';
 import { buildAlley } from './scene/alley';
 import { CameraRig, type Shot } from './scene/cameraRig';
 import { BALL_STYLES, createTomatoBall, PinSet } from './scene/models';
+import { ballEffects, type BallEffects } from './game/balls';
 import { GameTracker, mergeProgress, NEW_PROGRESS, newlyUnlocked, unlockedIds, type Item, type Progress } from './game/unlocks';
 import { Dave } from './scene/dave';
 import { buildBench } from './scene/bench';
@@ -42,6 +43,8 @@ const MAX_X = MAX_START_X;
 const MAX_ANGLE = MAX_AIM_ANGLE;
 const ARROWS_Z = -4.57; // the targeting arrows, 15 ft down the lane
 const BALL_START_Z = -0.3;
+/** Shown when a wide split is left: the ball can't reach both pins, so one pin has to go across. */
+const SPLIT_TIP = 'split! Hit the inside of one pin hard so it bounces off the side wall and back across.';
 // Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
@@ -161,7 +164,8 @@ async function start() {
   // ---- Unlockables: progress, and the ball and suit Dave is using ----
   let progress: Progress = mergeProgress(NEW_PROGRESS, storage.progress<Partial<Progress>>({}));
   let equipped: Equipped = storage.equipped();
-  let speedBonus = 1;
+  /** What the ball in hand does to a throw (see game/balls.ts). */
+  let ballFx: BallEffects = ballEffects('classic');
 
   // ---- The balls on the lane: the one in play, and the rest waiting on the return rack ----
   // Dave has a strike ball and a spare ball (they can be the same one); a rival brings their
@@ -229,15 +233,20 @@ async function start() {
   /** The bowler takes the ball they want off the rack (putting down any other one they had). */
   function pickUpBall() {
     const want = wantedBall();
-    if (inPlay === want) return;
+    if (inPlay === want) return applyBall(want);
     if (inPlay) rack.push(inPlay); // put down at the back of the queue
     rack = rack.filter((st) => st !== want);
     rackZ.delete(want);
     inPlay = want;
     ballMesh = modelFor(want);
-    physics.setBallRadius(radiusOf(want));
-    speedBonus = want === 'cherry' ? 1.06 : 1; // the little cherry tomato flies a bit faster
+    applyBall(want);
     rebuildBalls();
+  }
+  /** Sets the physics up for a ball: its size, weight and how it hits (a rival's balls are all standard). */
+  function applyBall(style: string) {
+    ballFx = ballEffects(style);
+    physics.setBallRadius(radiusOf(style), BALL_MASS * ballFx.mass);
+    physics.pinAction = ballFx.pinAction;
   }
   /** The ball that just came home along the chute stays on the rack until it's wanted again. */
   function dockBall() {
@@ -354,6 +363,8 @@ async function start() {
   let settleTime = 0;
   let resultTime = 0;
   let downBefore = 0;
+  /** Pin numbers standing when the ball was thrown (for the scoreboard: "the 7-10!"). */
+  let standingAtThrow: number[] = [];
   let lastThrow = { speed: 0, spin: 0, knocked: 0 };
   let reaction: ReactionKind = 'meh';
   let reactionShown = false;
@@ -450,9 +461,11 @@ async function start() {
   /** `exactSpeed` (m/s) is for computer bowlers, which choose a speed rather than a power. */
   function launch(p: number, aimValue: number, spinValue: number, exactSpeed?: number) {
     if (!inPlay) pickUpBall();
-    const speed = exactSpeed ?? (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * speedBonus;
+    applyBall(inPlay ?? 'classic');
+    const speed = exactSpeed ?? powerToSpeed(p);
     downBefore = physics.pinsDown();
-    physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue });
+    standingAtThrow = physics.standingPins();
+    physics.throwBall({ x: aimX, angle: aimValue * MAX_ANGLE, speed, spin: spinValue * ballFx.spin });
     lastThrow = { speed, spin: spinValue, knocked: 0 };
     splashed.clear();
     sound.release();
@@ -470,6 +483,11 @@ async function start() {
       if (throwsMade >= HINT_THROWS) hint.classList.add('faded');
     }
     setStatus(`${cpuTurn() && rival ? `${rival.name} rolls` : 'Rolling'}… ${speed.toFixed(1)} m/s · spin ${spinLabel(spinValue)}`);
+  }
+
+  /** Throw speed for a power-meter reading, with the ball's power. */
+  function powerToSpeed(p: number) {
+    return (MIN_SPEED + p * (MAX_SPEED - MIN_SPEED)) * ballFx.speed;
   }
 
   function resultMessage(m: string, knocked: number, firstBall: boolean) {
@@ -511,7 +529,7 @@ async function start() {
 
     if (mode === 'practice') {
       practiceStreak = reaction === 'strike' ? practiceStreak + 1 : fresh ? 0 : practiceStreak;
-      celebrate(reaction, practiceStreak);
+      celebrate(reaction, practiceStreak, true, { knocked, splitPickup: reaction === 'spare' && physics.splitShot });
       if (practiceRack) {
         setStatus(knocked === standingBefore ? 'Picked it up! 🍅' : `Missed — ${standingBefore - knocked} left`);
         nextSetter = 'rerack';
@@ -532,7 +550,7 @@ async function start() {
     const progressMade = tracker.record(reaction === 'strike' || reaction === 'spare' || reaction === 'split' ? reaction : 'other');
     // A rival's strikes and splits don't unlock anything for you
     if (!rivalBall) gainProgress(progressMade);
-    celebrate(reaction, tracker.streak, !rivalBall);
+    celebrate(reaction, tracker.streak, !rivalBall, { knocked, splitPickup: reaction === 'spare' && (physics.splitShot || !!progressMade.splitConverted) });
     outcome = match.recordRoll(knocked);
     matchLog.push(knocked);
     renderScorecard(scorecardEl, match);
@@ -542,16 +560,26 @@ async function start() {
     nextSetter = outcome.freshRack ? 'rerack' : 'clear';
   }
 
-  /** The turkey banner, and which animation the overhead scoreboard plays for this ball. */
-  function celebrate(kind: ReactionKind, streak: number, banner = true) {
+  /**
+   * The turkey banner, and which animation the overhead scoreboard plays for this ball.
+   * Strikes, doubles, turkeys and gutter balls get a glance up at the monitor; the rest just play on it.
+   */
+  function celebrate(kind: ReactionKind, streak: number, banner = true, ball: { knocked?: number; splitPickup?: boolean } = {}) {
     const run = kind === 'strike' ? streakName(streak) : null;
+    const after = physics.standingPins();
+    const pinsName = (pins: number[]) => pins.join('-');
     if (run) {
       if (banner) showBanner(run);
       autoReplayAt = AUTO_REPLAY_AFTER_BANNER;
       pendingAnim = { kind: 'turkey', label: run, sub: `${streak} strikes in a row!`, glance: true };
-    } else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
+    } else if (kind === 'strike' && streak === 2) pendingAnim = { kind: 'double', glance: true };
+    else if (kind === 'strike') pendingAnim = { kind: 'strike', glance: true };
     else if (kind === 'gutter') pendingAnim = { kind: 'gutter', glance: true };
+    else if (kind === 'spare' && ball.splitPickup) pendingAnim = { kind: 'splitPickup', sub: pinsName(standingAtThrow), glance: false };
     else if (kind === 'spare') pendingAnim = { kind: 'spare', glance: false };
+    else if (kind === 'split') pendingAnim = { kind: 'split', sub: pinsName(after), glance: false };
+    else if (kind === 'miss') pendingAnim = { kind: 'miss', sub: after.length === 1 ? `pin ${after[0]}` : `pins ${after.join(',')}`, glance: false };
+    else if (kind === 'good' && ball.knocked === 9) pendingAnim = { kind: 'nine', sub: after.length === 1 ? `the ${after[0]} pin stayed up` : '9 pins', glance: false };
     else pendingAnim = null;
   }
 
@@ -594,7 +622,8 @@ async function start() {
     phase = 'aiming';
     if (mode === 'practice') {
       practiceBall = setterMode === 'clear' ? 2 : 1;
-      setStatus(practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
+      const split = physics.wideSplitStanding();
+      setStatus(split ? SPLIT_TIP.charAt(0).toUpperCase() + SPLIT_TIP.slice(1) : practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
       updateSpinLabel();
       return;
     }
@@ -646,7 +675,7 @@ async function start() {
     const last = match.frames - 1;
     if (pos.frame === last && pos.ball === 2) say('bonus ball!');
     else if (pos.ball === 0) say(pos.frame === last ? 'final frame!' : 'line up and throw!');
-    else say(pos.standing === 10 ? 'bonus ball!' : 'pick up the spare!');
+    else say(pos.standing === 10 ? 'bonus ball!' : physics.wideSplitStanding() ? SPLIT_TIP : 'pick up the spare!');
     updateSpinLabel();
     renderScorecard(scorecardEl, match);
     scoreboard.showScores(match.players, match.players.indexOf(match.player), match.frames);
@@ -1426,7 +1455,7 @@ async function start() {
   scene.add(ghostLine.mesh);
 
   function practiceSpeed() {
-    return lastThrow.speed > 0 ? lastThrow.speed : (MIN_SPEED + DEFAULT_PRACTICE_POWER * (MAX_SPEED - MIN_SPEED)) * speedBonus;
+    return lastThrow.speed > 0 ? lastThrow.speed : powerToSpeed(DEFAULT_PRACTICE_POWER);
   }
 
   /** The pin-less practice world, shared with the computer bowlers. Loads on first use. */
@@ -1442,19 +1471,25 @@ async function start() {
       }
       return null;
     }
-    if (predictor.ballRadius !== physics.ballRadius) predictor.setBallRadius(physics.ballRadius);
+    if (predictor.ballRadius !== physics.ballRadius || predictor.ballMass !== physics.ballMass) predictor.setBallRadius(physics.ballRadius, physics.ballMass);
     return predictor;
   }
 
-  function updatePrediction(now: number) {
+  /**
+   * Works out where the throw will really go, on the pin-less world. In practice, at the
+   * speed of your last throw; in a game (with a ball whose aim line shows the true path), at
+   * the power you're charging, or a medium throw while you line up.
+   */
+  function updatePrediction(now: number, throughPins = false) {
     if (!ensurePredictor() || !predictor) return false;
-    const speed = practiceSpeed();
-    const key = [aimX, aim, spin, speed, physics.ballRadius].map((v) => v.toFixed(3)).join('|');
+    const speed = mode === 'practice' ? practiceSpeed() : powerToSpeed(phase === 'charging' ? power : DEFAULT_PRACTICE_POWER);
+    const until = throughPins ? DECK_END_Z : HEAD_PIN_Z;
+    const key = [aimX, aim, spin, speed, until, physics.ballRadius, physics.ballMass, ballFx.spin].map((v) => v.toFixed(3)).join('|');
     // At most ten times a second, and only when something changed
     if (key !== predictedKey && now - lastPredict > 100) {
       predictedKey = key;
       lastPredict = now;
-      predicted = predictor.tracePath({ x: aimX, angle: aim * MAX_ANGLE, speed, spin }, HEAD_PIN_Z);
+      predicted = predictor.tracePath({ x: aimX, angle: aim * MAX_ANGLE, speed, spin: spin * ballFx.spin }, until);
       legend.textContent = `Yellow: where it'll go at ${speed.toFixed(1)} m/s` + (lastReplay ? ' · Blue: your last throw' : '');
     }
     return predicted.length > 1;
@@ -1478,7 +1513,9 @@ async function start() {
     aimLine.visible = (phase === 'aiming' || phase === 'charging') && !cpuTurn();
     updateGhost();
     if (!aimLine.visible) return;
-    if (mode === 'practice' && updatePrediction(performance.now())) {
+    // Practice always shows the true path; in a game, only balls with a good aim line do
+    const truePath = mode === 'practice' || ballFx.truePath;
+    if (truePath && updatePrediction(performance.now(), mode !== 'practice' && ballFx.throughPins)) {
       // Spread the line's points evenly along the predicted path
       for (let i = 0; i < AIM_POINTS; i++) {
         const k = (i / (AIM_POINTS - 1)) * (predicted.length - 1);
@@ -1494,10 +1531,12 @@ async function start() {
     const p = physics.ball.translation();
     const angle = aim * MAX_ANGLE;
     const length = -HEAD_PIN_Z;
+    // Balls with a weaker aim line only show part of the way
+    const reach = length * ballFx.reach;
     for (let i = 0; i < AIM_POINTS; i++) {
-      const d = (i / (AIM_POINTS - 1)) * length;
+      const d = (i / (AIM_POINTS - 1)) * reach;
       // Rough hook preview at a medium throw: almost nothing in the oil, then it bends late
-      const hook = spin * 0.37 * Math.pow(d / length, 3);
+      const hook = spin * ballFx.spin * 0.37 * Math.pow(d / length, 3);
       aimPoints[i].x = p.x + Math.sin(angle) * d + hook;
       aimPoints[i].z = p.z - BALL_RADIUS - Math.cos(angle) * d;
     }
@@ -1661,9 +1700,11 @@ async function start() {
       const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
       const target = chooseTarget(standing, r);
       const [you, them] = m.totals();
+      // Plan with the rival's own ball (the preview world copies the ball in play)
+      applyBall(`${r.id}-${target.fullRack ? 'strike' : 'spare'}`);
+      ensurePredictor();
       const t = humanise(r, planThrow(r, target, tracer), pressureFor(m.position.frame, them, you, m.frames), undefined, !target.fullRack);
       aimX = t.x;
-      physics.setBallRadius(radiusOf(`${r.id}-${target.fullRack ? 'strike' : 'spare'}`));
       physics.holdBall(aimX);
       physics.step();
       downBefore = physics.pinsDown();
@@ -1717,6 +1758,8 @@ async function start() {
       const standing = physics.pins.flatMap((pin, i) => (physics.isPinDown(i) ? [] : [pin.translation()]));
       const target = chooseTarget(standing, rival);
       const [you, them] = match.totals();
+      applyBall(`${rival.id}-${target.fullRack ? 'strike' : 'spare'}`);
+      ensurePredictor();
       const plan = planThrow(rival, target, tracer);
       cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you, match.frames), undefined, !target.fullRack);
       aimX = cpuThrow.x;
@@ -1877,8 +1920,8 @@ async function start() {
     },
     scoreboard,
     /** Play a scoreboard animation as if a ball had just been thrown, for checking how it looks. */
-    celebrate(kind: ReactionKind, streak = 1) {
-      celebrate(kind, streak);
+    celebrate(kind: ReactionKind, streak = 1, ball: { knocked?: number; splitPickup?: boolean } = {}) {
+      celebrate(kind, streak, true, ball);
       runPinsetter('rerack');
     },
     /** Jump the replay to a moment (seconds into the throw), for checking camera shots. */

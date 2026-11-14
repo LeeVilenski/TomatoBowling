@@ -6,10 +6,16 @@ describe('unlocks', () => {
     expect([...unlockedIds(NEW_PROGRESS)].sort()).toEqual(['classic', 'navy']);
   });
 
-  it('score thresholds unlock cherry, heirloom and tuxedo', () => {
+  it('score thresholds unlock cherry, plum, heirloom, Black Krim and tuxedo', () => {
     const p = mergeProgress(NEW_PROGRESS, { bestScore: 210 });
-    expect(newlyUnlocked(NEW_PROGRESS, p).map((i) => i.id).sort()).toEqual(['cherry', 'heirloom', 'tuxedo']);
+    expect(newlyUnlocked(NEW_PROGRESS, p).map((i) => i.id).sort()).toEqual(['cherry', 'heirloom', 'krim', 'plum', 'tuxedo']);
     expect(newlyUnlocked(p, mergeProgress(p, { bestScore: 250 }))).toEqual([]);
+  });
+
+  it('a few games unlock the tomatillo and the beefsteak', () => {
+    const three = mergeProgress(NEW_PROGRESS, { gamesPlayed: 3 });
+    expect(newlyUnlocked(NEW_PROGRESS, three).map((i) => i.id)).toEqual(['tomatillo']);
+    expect(newlyUnlocked(three, mergeProgress(three, { gamesPlayed: 5 })).map((i) => i.id)).toEqual(['beefsteak']);
   });
 
   it('ten games unlock the tracksuit', () => {

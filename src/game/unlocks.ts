@@ -32,10 +32,16 @@ export interface Item {
 
 export const ITEMS: Item[] = [
   { id: 'classic', kind: 'ball', name: 'Classic Tomato', how: 'Always yours', unlocked: () => true },
+  { id: 'tomatillo', kind: 'ball', name: 'Tomatillo', how: 'Play 3 games', unlocked: (p) => p.gamesPlayed >= 3 },
+  { id: 'beefsteak', kind: 'ball', name: 'Beefsteak', how: 'Play 5 games', unlocked: (p) => p.gamesPlayed >= 5 },
   { id: 'cherry', kind: 'ball', name: 'Cherry Tomato', how: 'Score 100 or more', unlocked: (p) => p.bestScore >= 100 },
+  { id: 'plum', kind: 'ball', name: 'Plum Tomato', how: 'Score 120 or more', unlocked: (p) => p.bestScore >= 120 },
   { id: 'green', kind: 'ball', name: 'Green Tomato', how: 'Bowl 3 strikes in one game', unlocked: (p) => p.mostStrikesInGame >= 3 },
   { id: 'heirloom', kind: 'ball', name: 'Heirloom', how: 'Score 150 or more', unlocked: (p) => p.bestScore >= 150 },
+  { id: 'sundried', kind: 'ball', name: 'Sun-dried', how: 'Bowl 5 strikes in one game', unlocked: (p) => p.mostStrikesInGame >= 5 },
+  { id: 'krim', kind: 'ball', name: 'Black Krim', how: 'Score 180 or more', unlocked: (p) => p.bestScore >= 180 },
   { id: 'circuit', kind: 'ball', name: 'Circuit Board', how: 'Become champion of Server Room Lanes', unlocked: (p) => p.crowns.includes('server') },
+  { id: 'discoball', kind: 'ball', name: 'Disco Tomato', how: 'Become champion of Disco Inferno', unlocked: (p) => p.crowns.includes('disco') },
   { id: 'sunset', kind: 'ball', name: 'Sunset Tomato', how: 'Become champion of the Rooftop', unlocked: (p) => p.crowns.includes('rooftop') },
   { id: 'golden', kind: 'ball', name: 'Golden Tomato', how: 'Bowl a turkey (3 strikes in a row)', unlocked: (p) => p.turkey },
   { id: 'navy', kind: 'suit', name: 'Navy Suit', how: 'Always yours', unlocked: () => true },

@@ -1,5 +1,6 @@
 // The Wardrobe screen: pick Dave's strike ball, spare ball and suit.
-import { ITEMS, unlockedIds, type Progress } from '../game/unlocks';
+import { ITEMS, unlockedIds, type Item, type Progress } from '../game/unlocks';
+import { AIM_LINES, BALL_STATS, STAT_NAMES, ballStats, type BallStats } from '../game/balls';
 import { $ } from './screens';
 
 export interface Equipped {
@@ -23,6 +24,12 @@ const SWATCHES: Record<string, string> = {
   green: 'radial-gradient(circle at 35% 30%, #b6ea6c, #5ea52c)',
   heirloom: 'repeating-linear-gradient(100deg, #d9361a 0 6px, #ffb02e 6px 10px, #8bbf3a 10px 13px)',
   golden: 'radial-gradient(circle at 35% 30%, #fff1b0, #d4a017)',
+  tomatillo: 'radial-gradient(circle at 35% 30%, #d6f08f, #7fa83a)',
+  beefsteak: 'radial-gradient(circle at 35% 30%, #ff5a45, #9c140c)',
+  plum: 'radial-gradient(circle at 35% 30%, #e8405a, #7a0a1c)',
+  sundried: 'radial-gradient(circle at 35% 30%, #b8442a, #5a1208)',
+  krim: 'radial-gradient(circle at 35% 30%, #7a3a3a, #2a0c10)',
+  discoball: 'repeating-conic-gradient(#e8eaf6 0 10deg, #9aa0c0 10deg 20deg)',
   navy: '#1f2a4d',
   tuxedo: 'linear-gradient(90deg, #121216 40%, #fff 40% 60%, #121216 60%)',
   pinstripe: 'repeating-linear-gradient(90deg, #3a3d48 0 5px, #c9c9d4 5px 6px)',
@@ -47,19 +54,36 @@ export function renderWardrobe(progress: Progress, equipped: Equipped, equip: (e
       b.className = `chip${on ? ' on' : ''}${have ? '' : ' locked'}`;
       b.setAttribute('aria-pressed', String(on));
       b.innerHTML = `<span class="swatch${kind === 'suit' ? ' suit' : ''}" style="background:${SWATCHES[item.id]}"></span><span>${item.name}</span>${
-        have ? '' : `<span class="how">${item.how}</span>`
-      }`;
+        kind === 'ball' ? statPips(ballStats(item.id)) : ''
+      }${have ? '' : `<span class="how">${item.how}</span>`}`;
+      if (kind === 'ball') b.title = ballSummary(item);
       b.addEventListener('click', () => {
         if (!have) {
-          $('wr-hint').textContent = `🔒 ${item.name}: ${item.how}.`;
+          $('wr-hint').textContent = `🔒 ${item.name}: ${item.how}.${kind === 'ball' ? ` ${ballSummary(item)}` : ''}`;
           return;
         }
         const next = { ...equipped, [slot]: item.id };
         equip(next);
-        $('wr-hint').textContent = '';
         renderWardrobe(progress, next, equip);
+        $('wr-hint').textContent = kind === 'ball' ? `${item.name}: ${ballSummary(item)}` : '';
       });
       box.append(b);
     }
   }
+}
+
+/** Three little rows of pips: power, spin and aim line, out of five. */
+function statPips(s: BallStats): string {
+  const rows = (Object.keys(STAT_NAMES) as (keyof BallStats)[]).map((k) => {
+    const pips = Array.from({ length: 5 }, (_, i) => `<i${i < s[k] ? ' class="on"' : ''}></i>`).join('');
+    return `<span class="stat"><b>${STAT_NAMES[k][0]}</b>${pips}</span>`;
+  });
+  return `<span class="stats" aria-label="Power ${s.power}, spin ${s.spin}, aim line ${s.aim} out of 5">${rows.join('')}</span>`;
+}
+
+/** How a ball plays, in a sentence or two. */
+function ballSummary(item: Item): string {
+  const s = ballStats(item.id);
+  const blurb = BALL_STATS[item.id]?.blurb ?? '';
+  return `${blurb} Power ${s.power}/5 · Spin ${s.spin}/5 · Aim line ${s.aim}/5 (${AIM_LINES[s.aim]}).`;
 }
