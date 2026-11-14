@@ -42,6 +42,8 @@ const MAX_X = MAX_START_X;
 const MAX_ANGLE = MAX_AIM_ANGLE;
 const ARROWS_Z = -4.57; // the targeting arrows, 15 ft down the lane
 const BALL_START_Z = -0.3;
+/** Shown when a wide split is left: the ball can't reach both pins, so one pin has to go across. */
+const SPLIT_TIP = 'split! hit the inside of one pin hard so it bounces off the side wall and back across.';
 // Aiming exactly where you swipe is far too twitchy on a phone (the lane is ~60 px wide at
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
@@ -594,7 +596,8 @@ async function start() {
     phase = 'aiming';
     if (mode === 'practice') {
       practiceBall = setterMode === 'clear' ? 2 : 1;
-      setStatus(practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
+      const split = physics.wideSplitStanding();
+      setStatus(split ? SPLIT_TIP.charAt(0).toUpperCase() + SPLIT_TIP.slice(1) : practiceRack ? 'Pick up the spare!' : practiceBall === 1 ? 'Line up and throw!' : 'Second ball — pick up the spare!');
       updateSpinLabel();
       return;
     }
@@ -646,7 +649,7 @@ async function start() {
     const last = match.frames - 1;
     if (pos.frame === last && pos.ball === 2) say('bonus ball!');
     else if (pos.ball === 0) say(pos.frame === last ? 'final frame!' : 'line up and throw!');
-    else say(pos.standing === 10 ? 'bonus ball!' : 'pick up the spare!');
+    else say(pos.standing === 10 ? 'bonus ball!' : physics.wideSplitStanding() ? SPLIT_TIP : 'pick up the spare!');
     updateSpinLabel();
     renderScorecard(scorecardEl, match);
     scoreboard.showScores(match.players, match.players.indexOf(match.player), match.frames);

@@ -15,6 +15,7 @@ import {
   gutterPlates,
   pinSpots,
 } from './dimensions';
+import { isSplit } from './reactions';
 
 export { PHYSICS_DT };
 
@@ -41,6 +42,22 @@ const SPIN_SPEED_SCALING = 3;
 const PIN_FRICTION = 0.35;
 const PIN_RESTITUTION = 0.45;
 const BALL_RESTITUTION = 0.2;
+
+// Splits. A ball can only push a pin away from itself, so on a bare physics lane a struck pin
+// heads mostly backwards into the pit and almost never gets across the deck to the other
+// pin of a split (the sweep in scripts/split-sweep.ts made 0 of ~1,300 7-10s). Real splits
+// are made with pins that skid sideways and with lively kickbacks, so when the ball is rolled
+// at a wide split we lend a hand:
+/** A pin the ball hits keeps this much more of its sideways speed... */
+const SPLIT_PIN_ACTION = 3;
+/** ...and this share of its backwards speed, so it skids across the deck rather than into the pit. */
+const SPLIT_PIN_BACKSPEED = 0.6;
+/** The side kickbacks throw pins back onto the deck: this bouncy... */
+const KICKBACK_BOUNCE = 0.8;
+/** ...keeping only this share of the pin's backwards speed (the padding soaks it up). */
+const KICKBACK_DEADEN = 0.15;
+/** Only for splits wider than this (m, across the lane): closer ones, like the 3-10, the ball can take both pins itself. */
+const WIDE_SPLIT = 0.4;
 
 // A pin counts as down once it tilts more than ~30° or drops off the deck.
 const DOWN_TILT_COS = Math.cos((30 * Math.PI) / 180);
@@ -84,6 +101,15 @@ export class BowlingPhysics {
   private stemWasDown = false;
   private throwSpeed = 8;
   private pinByCollider = new Map<number, number>();
+  private kickbacks: R.Collider[] = [];
+  /** True while the ball in play was rolled at a wide split (see SPLIT_PIN_ACTION). */
+  splitShot = false;
+  /** Scales the split help for the ball in play (a heavier-hitting ball sends pins further). */
+  pinAction = 1;
+  /** Pins the ball has hit this throw. */
+  private struck = new Set<number>();
+  /** Pins touching a kickback right now (each touch is handled once). */
+  private onKickback = new Set<number>();
   private readonly spots = pinSpots();
 
   private constructor() {
@@ -179,16 +205,15 @@ export class BowlingPhysics {
     for (const plate of gutterPlates()) {
       this.fixed(plate.halfWidth, 0.01, gutterLen / 2, plate.x, plate.y - 0.01, DECK_END_Z / 2, 0.3, plate.angle);
     }
-    for (const side of [-1, 1]) {
-      // Low outer lip along the lane
-      this.fixed(0.02, 0.1, gutterLen / 2, side * (OUTER_HALF + 0.02), -0.05, DECK_END_Z / 2);
-    }
-
     // Kickback walls beside the pin deck and pit.
     const kickStart = DECK_END_Z + 1.6;
     const kickLen = kickStart - PIT_END_Z;
     for (const side of [-1, 1]) {
-      this.fixed(0.03, 0.8, kickLen / 2, side * (OUTER_HALF + 0.03), 0.05, (kickStart + PIT_END_Z) / 2);
+      // Low outer lip along the lane, up to the kickbacks (so a pin flying off the deck meets the kickback, not the lip)
+      this.fixed(0.02, 0.1, kickStart / 2, side * (OUTER_HALF + 0.02), -0.05, kickStart / 2);
+      const kick = this.fixed(0.03, 0.8, kickLen / 2, side * (OUTER_HALF + 0.03), 0.05, (kickStart + PIT_END_Z) / 2);
+      kick.setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max);
+      this.kickbacks.push(kick);
     }
 
     // Pit floor and the back cushion.
@@ -234,6 +259,18 @@ export class BowlingPhysics {
     this.throwSpeed = speed;
     this.bumped = false;
     this.bumpCount = 0;
+    this.struck.clear();
+    this.onKickback.clear();
+    this.splitShot = this.wideSplitStanding();
+    for (const k of this.kickbacks) k.setRestitution(this.splitShot ? KICKBACK_BOUNCE : 0.1);
+  }
+
+  /** True when the pins standing are a split too wide for the ball to take both sides itself. */
+  wideSplitStanding(): boolean {
+    const standing = this.standingPins().filter((n) => !this.isPinRemoved(n - 1));
+    if (!isSplit(standing)) return false;
+    const xs = standing.map((n) => this.pins[n - 1].translation().x);
+    return Math.max(...xs) - Math.min(...xs) > WIDE_SPLIT;
   }
 
   /** Put every pin back on its spot, upright. */
@@ -300,6 +337,39 @@ export class BowlingPhysics {
     }
     if (this.stemBumps) this.stemCheck();
     this.world.step();
+    if (this.splitShot) this.splitHelp();
+  }
+
+  /** Split help (see SPLIT_PIN_ACTION): livelier pins off the ball, and kickbacks that bounce them back onto the deck. */
+  private splitHelp() {
+    if (this.ball.bodyType() === RAPIER.RigidBodyType.Dynamic) {
+      for (const i of this.ballPinContacts()) {
+        if (this.struck.has(i)) continue;
+        this.struck.add(i);
+        const v = this.pins[i].linvel();
+        const k = SPLIT_PIN_ACTION * this.pinAction;
+        this.pins[i].setLinvel({ x: v.x * k, y: v.y, z: v.z * SPLIT_PIN_BACKSPEED }, true);
+      }
+    }
+    const touching = new Set<number>();
+    for (const k of this.kickbacks) {
+      this.world.contactPairsWith(k, (other) => {
+        const pin = this.pinByCollider.get(other.handle);
+        if (pin === undefined || touching.has(pin)) return;
+        this.world.contactPair(k, other, (m) => {
+          if (m.numContacts() > 0) touching.add(pin);
+        });
+      });
+    }
+    for (const i of touching) {
+      if (this.onKickback.has(i)) continue;
+      const body = this.pins[i];
+      const p = body.translation();
+      if (p.z < DECK_END_Z - 0.1) continue; // already over the pit
+      const v = body.linvel();
+      body.setLinvel({ x: -Math.sign(p.x) * Math.abs(v.x), y: v.y, z: v.z < 0 ? v.z * KICKBACK_DEADEN : v.z }, true);
+    }
+    this.onKickback = touching;
   }
 
   /**
