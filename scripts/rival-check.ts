@@ -1,7 +1,7 @@
 // Plays each computer bowler through simulated 10-frame games with the real physics, at
 // their own venue's lane conditions, and checks they average close to their target. Use it to tune rivals in src/game/rivals.ts.
 // Usage: npm run check:rivals [-- --games 40] [-- --rival carl]
-import { chooseTarget, gaussian, humanise, planThrow } from '../src/game/ai';
+import { chooseTarget, gaussian, humanise, planThrow, strikeRun } from '../src/game/ai';
 import { HEAD_PIN_Z } from '../src/game/dimensions';
 import { Match } from '../src/game/match';
 import { ladderOf, laneFor } from '../src/game/career';
@@ -32,12 +32,12 @@ async function main() {
   for (const i of tracer.pins.keys()) tracer.removePin(i);
 
   /** Throw one ball and let everything come to rest, as the game does. */
-  function bowl(rival: Rival, frame: number, random: () => number) {
+  function bowl(rival: Rival, frame: number, random: () => number, rolls: number[] = []) {
     const standing = lane.pins.flatMap((pin, i) => (lane.isPinDown(i) ? [] : [pin.translation()]));
     const target = chooseTarget(standing, rival);
     const plan = planThrow(rival, target, tracer);
     const pressure = frame >= 9 ? 0.6 : 0;
-    const t = humanise(rival, plan, pressure, () => gaussian(random), !target.fullRack);
+    const t = humanise(rival, plan, pressure, () => gaussian(random), !target.fullRack, strikeRun(rolls));
     const before = lane.pinsDown();
     lane.holdBall(t.x);
     lane.step();
@@ -93,7 +93,7 @@ async function main() {
           lane.setConditions(conditions);
           tracer.setConditions(conditions);
         }
-        const pins = bowl(rival, pos.frame, random);
+        const pins = bowl(rival, pos.frame, random, match.players[0].rolls);
         if (pos.fresh) {
           firstBalls++;
           if (pins === 10) strikes++;

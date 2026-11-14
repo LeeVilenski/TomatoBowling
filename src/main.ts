@@ -22,7 +22,7 @@ import { buildDecor } from './scene/decor';
 import { ReturnChute } from './scene/chute';
 import { VENUES, VenueManager, type VenueId } from './scene/venues';
 import { Juice } from './scene/juice';
-import { chooseTarget, humanise, planThrow, pressureFor } from './game/ai';
+import { chooseTarget, humanise, planThrow, pressureFor, strikeRun } from './game/ai';
 import { RIVALS, rivalById, type Rival } from './game/rivals';
 import { addMatchStats, isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, NO_STATS, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
 import { FRAMES } from './game/scoring';
@@ -1703,7 +1703,7 @@ async function start() {
       // Plan with the rival's own ball (the preview world copies the ball in play)
       applyBall(`${r.id}-${target.fullRack ? 'strike' : 'spare'}`);
       ensurePredictor();
-      const t = humanise(r, planThrow(r, target, tracer), pressureFor(m.position.frame, them, you, m.frames), undefined, !target.fullRack);
+      const t = humanise(r, planThrow(r, target, tracer), pressureFor(m.position.frame, them, you, m.frames), undefined, !target.fullRack, strikeRun(m.player.rolls));
       aimX = t.x;
       physics.holdBall(aimX);
       physics.step();
@@ -1761,7 +1761,7 @@ async function start() {
       applyBall(`${rival.id}-${target.fullRack ? 'strike' : 'spare'}`);
       ensurePredictor();
       const plan = planThrow(rival, target, tracer);
-      cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you, match.frames), undefined, !target.fullRack);
+      cpuThrow = humanise(rival, plan, pressureFor(match.position.frame, them, you, match.frames), undefined, !target.fullRack, strikeRun(match.player.rolls));
       aimX = cpuThrow.x;
       physics.holdBall(aimX);
       // Step across to the chosen spot, then a moment to line up
