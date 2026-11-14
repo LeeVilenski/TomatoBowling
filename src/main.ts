@@ -321,8 +321,15 @@ async function start() {
     }
     $('venue-name').textContent = `📍 ${venues.current.name}`;
   }
-  /** Venues you can pick for free play: the Golden Pin once you've reached the career final. */
-  const venueOpen = (id: VenueId) => id !== 'golden' || isLadderOpen(career, LADDERS.findIndex((l) => l.id === 'golden'));
+  /**
+   * Venues you can pick for free play: the Golden Pin once you've reached the career final,
+   * and MEM (the IT engineers' den) once you're champion of Server Room Lanes.
+   */
+  const venueOpen = (id: VenueId) => {
+    if (id === 'golden') return isLadderOpen(career, LADDERS.findIndex((l) => l.id === 'golden'));
+    if (id === 'mem') return progress.crowns.includes('server') || isChampion(career, LADDERS.find((l) => l.id === 'server')!.rungs);
+    return true;
+  };
   const savedVenue = storage.text('venue', 'classic') as VenueId;
   let preferredVenue: VenueId = 'classic';
   selectVenue(VENUES.some((v) => v.id === savedVenue) && venueOpen(savedVenue) ? savedVenue : 'classic');
@@ -1020,6 +1027,10 @@ async function start() {
       note = `<p class="small">${n.emoji} ${escapeHtml(n.name)} is ready for you.</p>`;
     }
     if (crowned && nextLadder) note = `<p class="small">${nextLadder.emoji} <b>${escapeHtml(nextLadder.name)}</b> is open!</p>`;
+    if (crowned && ladder.id === 'server') {
+      note += `<p class="small">🗑️ The engineers have let you into their den: <b>MEM</b> is open for free play (📍 on the menu).</p>`;
+      showToast('🔓 New venue unlocked: MEM');
+    }
     if (crowned && final) note = `<p class="small">You've beaten them all. Tomato Dave is the greatest bowler in the land! 🍅👑</p>`;
     $('go-body').innerHTML = `<ul class="results"><li class="${result.won ? 'win' : ''}"><span>You</span><span>${you}</span></li><li class="${!result.won && you !== them ? 'win' : ''}"><span>${rival.emoji} ${escapeHtml(rival.name)}</span><span>${them}</span></li></ul>
       ${rivalQuote(rival, result.won, you === them)}
@@ -1088,8 +1099,8 @@ async function start() {
     $('credits-roll').innerHTML = `
       <h3>Starring</h3><p>🍅 Tomato Dave</p>
       <h3>With</h3>${cast}
-      <h3>Venues</h3>${LADDERS.map((l) => `<p>${l.emoji} ${escapeHtml(l.name)}</p>`).join('')}
-      <h3>Music</h3><p>Tomato Lounge · Packet Loss · Disco Dave · Bossa Marinara · Golden Glory</p><p class="small">all composed in code</p>
+      <h3>Venues</h3>${LADDERS.map((l) => `<p>${l.emoji} ${escapeHtml(l.name)}</p>`).join('')}<p>🗑️ MEM</p>
+      <h3>Music</h3><p>Tomato Lounge · Packet Loss · Disco Dave · Bossa Marinara · Golden Glory · Thermal Throttle</p><p class="small">all composed in code</p>
       <h3>Built with</h3><p>Three.js · Rapier physics · Vite</p>
       <h3>And you</h3><p>Thanks for playing! 🎳</p>`;
     // Restart the roll each time it's opened

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { TrackId } from '../audio/music';
 import { DECK_END_Z, OUTER_HALF, PIN_PROFILE, PIT_END_Z } from '../game/dimensions';
 import { canvasTexture, carpet, maskingPanel, maskingPart, neonSign } from './decor';
@@ -7,7 +8,7 @@ import { scoreMonitor } from './scoreboard';
 // The places Tomato Dave can bowl. The lanes are the same everywhere; each venue adds its
 // own walls, ceiling, lights, signs, music and a few moving effects.
 
-export type VenueId = 'classic' | 'server' | 'disco' | 'rooftop' | 'golden';
+export type VenueId = 'classic' | 'server' | 'disco' | 'rooftop' | 'golden' | 'mem';
 
 export interface VenueInfo {
   id: VenueId;
@@ -22,6 +23,8 @@ export const VENUES: VenueInfo[] = [
   { id: 'rooftop', name: 'Rooftop at Sunset', track: 'bossa' },
   // Career mode's final; open for free play once you've reached it
   { id: 'golden', name: 'The Golden Pin', track: 'golden' },
+  // The IT engineers' den: opens once you're champion of Server Room Lanes
+  { id: 'mem', name: 'MEM', track: 'mem' },
 ];
 
 interface Lighting {
@@ -86,6 +89,7 @@ function signage(g: THREE.Group, title: string, sub: string, tc: string, sc: str
   // stripe can't flicker through
   panel.position.set(0, 0.95, DECK_END_Z + 0.46);
   g.add(maskingPart(sign), maskingPart(panel));
+  return { sign, panel };
 }
 
 /** Glowing strips along both edges of our lane's capping. */
@@ -905,7 +909,792 @@ function golden(scores: THREE.Texture): Built {
   };
 }
 
-const BUILDERS: Record<VenueId, (scores: THREE.Texture) => Built> = { classic, server, disco, rooftop, golden };
+// ---------------------------------------------------------------- MEM
+// The IT engineers' den: a damp basement alley lined with grubby computer desks, dead
+// hardware piled everywhere and skips dumped on the neighbouring lanes. Nobody wants to be
+// here; the engineers are here anyway.
+
+/** Merges a group's static meshes into one mesh per material, so hundreds of props cost a handful of draw calls. */
+function bake(src: THREE.Object3D): THREE.Group {
+  src.updateMatrixWorld(true);
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  src.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    let geo = (o.geometry as THREE.BufferGeometry).clone().applyMatrix4(o.matrixWorld);
+    if (geo.index) geo = geo.toNonIndexed();
+    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
+    const mat = o.material as THREE.Material;
+    byMat.set(mat, [...(byMat.get(mat) ?? []), geo]);
+  });
+  const out = new THREE.Group();
+  for (const [mat, geos] of byMat) {
+    const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+    mesh.receiveShadow = true;
+    out.add(mesh);
+  }
+  return out;
+}
+
+/** A small screen picture for the old monitors (256 × 192). */
+function screenTexture(draw: (c: CanvasRenderingContext2D) => void) {
+  return canvasTexture(256, 192, (c) => {
+    draw(c);
+    // Scanlines and a dusty vignette
+    c.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    for (let y = 0; y < 192; y += 3) c.fillRect(0, y, 256, 1);
+    const v = c.createRadialGradient(128, 96, 40, 128, 96, 160);
+    v.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    v.addColorStop(1, 'rgba(20, 18, 8, 0.65)');
+    c.fillStyle = v;
+    c.fillRect(0, 0, 256, 192);
+  });
+}
+
+function textLines(c: CanvasRenderingContext2D, lines: string[], colour: string, x: number, y: number, size: number, gap: number) {
+  c.fillStyle = colour;
+  c.font = `${size}px "Courier New", monospace`;
+  lines.forEach((l, i) => c.fillText(l, x, y + i * gap));
+}
+
+/** A paper notice taped to the wall. */
+function notice(lines: string[], ink: string, paper = '#d9d0ad') {
+  return canvasTexture(256, 320, (c) => {
+    c.fillStyle = paper;
+    c.fillRect(0, 0, 256, 320);
+    // Damp, curling and sun-faded
+    const stain = c.createRadialGradient(200, 270, 5, 200, 270, 120);
+    stain.addColorStop(0, 'rgba(120, 90, 30, 0.45)');
+    stain.addColorStop(1, 'rgba(120, 90, 30, 0)');
+    c.fillStyle = stain;
+    c.fillRect(0, 0, 256, 320);
+    c.fillStyle = 'rgba(230, 230, 200, 0.55)';
+    for (const [x, y] of [[-6, -6], [222, -6], [-6, 296], [222, 296]]) c.fillRect(x, y, 40, 30); // tape
+    c.fillStyle = ink;
+    c.textAlign = 'center';
+    let size = 46;
+    c.font = `900 ${size}px "Arial Black", "Trebuchet MS", sans-serif`;
+    const widest = Math.max(...lines.map((l) => c.measureText(l).width));
+    size = Math.min(46, Math.floor((46 * 220) / widest));
+    c.font = `900 ${size}px "Arial Black", "Trebuchet MS", sans-serif`;
+    const top = 160 - ((lines.length - 1) * size * 1.15) / 2 + size / 3;
+    lines.forEach((l, i) => c.fillText(l, 128, top + i * size * 1.15));
+  });
+}
+
+/** A skip: a steel bin that flares out at the top, with sloped ends. Origin on the floor. */
+function skipBody(w: number, h: number, d: number) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    if (p.getY(i) > 0) {
+      p.setX(i, p.getX(i) * 1.06);
+      p.setZ(i, p.getZ(i) * 1.35);
+    }
+  }
+  geo.translate(0, h / 2, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function mem(scores: THREE.Texture): Built {
+  const g = new THREE.Group();
+  const props = new THREE.Group(); // everything that never moves, baked at the end
+  const rand = seeded(404);
+  const pick = <T,>(a: T[]) => a[Math.floor(rand() * a.length)];
+
+  // ---- The room: breeze blocks painted a sickly yellow-green, damp coming through ----
+  const wallTex = canvasTexture(512, 512, (c) => {
+    c.fillStyle = '#7c7752';
+    c.fillRect(0, 0, 512, 512);
+    // Breeze-block courses
+    c.strokeStyle = 'rgba(40, 38, 22, 0.45)';
+    c.lineWidth = 2;
+    for (let row = 0; row < 16; row++) {
+      const y = row * 32;
+      c.beginPath();
+      c.moveTo(0, y);
+      c.lineTo(512, y);
+      c.stroke();
+      for (let x = (row % 2) * 64; x < 512; x += 128) {
+        c.beginPath();
+        c.moveTo(x, y);
+        c.lineTo(x, y + 32);
+        c.stroke();
+      }
+    }
+    // Damp streaks running down from the ceiling
+    for (let i = 0; i < 9; i++) {
+      const x = 20 + rand() * 470;
+      const w = 12 + rand() * 40;
+      const len = 120 + rand() * 260;
+      const grd = c.createLinearGradient(0, 0, 0, len);
+      grd.addColorStop(0, 'rgba(60, 50, 20, 0.6)');
+      grd.addColorStop(1, 'rgba(60, 50, 20, 0)');
+      c.fillStyle = grd;
+      c.fillRect(x, 0, w, len);
+    }
+    // Black mould blooms in the top corners
+    for (let i = 0; i < 6; i++) {
+      const x = rand() * 512;
+      const y = rand() * 90;
+      const r = 20 + rand() * 50;
+      const m = c.createRadialGradient(x, y, 2, x, y, r);
+      m.addColorStop(0, 'rgba(18, 22, 10, 0.75)');
+      m.addColorStop(1, 'rgba(18, 22, 10, 0)');
+      c.fillStyle = m;
+      c.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // Peeling paint: patches of the grey block underneath
+    for (let i = 0; i < 5; i++) {
+      const x = rand() * 512;
+      const y = 140 + rand() * 210;
+      const r = 10 + rand() * 14;
+      let ang = 0;
+      let rad = r;
+      c.fillStyle = 'rgba(118, 116, 104, 0.85)';
+      c.beginPath();
+      for (let k = 0; k < 24; k++) {
+        ang = (k / 24) * Math.PI * 2;
+        rad = Math.max(r * 0.5, Math.min(r * 1.5, rad + (rand() - 0.5) * r * 0.5)); // ragged, not starry
+        c.lineTo(x + Math.cos(ang) * rad * 1.5, y + Math.sin(ang) * rad);
+      }
+      c.fill();
+      // The curled edge of the paint, catching a little light
+      c.strokeStyle = 'rgba(160, 156, 112, 0.6)';
+      c.lineWidth = 1.5;
+      c.stroke();
+    }
+    // A scuffed brown dado below waist height, and grime creeping up from the floor
+    c.fillStyle = '#3e3a28';
+    c.fillRect(0, 400, 512, 112);
+    c.fillStyle = '#2a271a';
+    c.fillRect(0, 396, 512, 6);
+    const grime = c.createLinearGradient(0, 330, 0, 512);
+    grime.addColorStop(0, 'rgba(25, 22, 10, 0)');
+    grime.addColorStop(1, 'rgba(25, 22, 10, 0.7)');
+    c.fillStyle = grime;
+    c.fillRect(0, 330, 512, 182);
+    for (let i = 0; i < 40; i++) {
+      c.fillStyle = `rgba(20, 18, 8, ${0.2 + rand() * 0.3})`;
+      c.fillRect(rand() * 512, 404 + rand() * 100, 4 + rand() * 30, 2 + rand() * 4);
+    }
+  });
+  wallTex.wrapS = THREE.RepeatWrapping;
+  wallTex.repeat.set(ROOM_LEN / CEIL_Y, 1);
+  const endTex = wallTex.clone();
+  endTex.repeat.set((WALL_X * 2) / CEIL_Y, 1);
+  endTex.needsUpdate = true;
+
+  // Suspended ceiling: stained tiles, a few missing (8 × 8 tiles of 0.6 m per repeat)
+  const ceilTex = canvasTexture(512, 512, (c) => {
+    c.fillStyle = '#9a9478';
+    c.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+      const r = rand();
+      if (r < 0.07) {
+        c.fillStyle = '#0c0b07'; // missing tile: just the dark void and some cables
+        c.fillRect(i * 64, j * 64, 64, 64);
+        c.strokeStyle = '#3a3a30';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.moveTo(i * 64, j * 64 + 20 + rand() * 30);
+        c.quadraticCurveTo(i * 64 + 32, j * 64 + 60, i * 64 + 64, j * 64 + 10 + rand() * 40);
+        c.stroke();
+        continue;
+      }
+      if (r < 0.45) {
+        // Water stain rings
+        const x = i * 64 + 16 + rand() * 32;
+        const y = j * 64 + 16 + rand() * 32;
+        const s = c.createRadialGradient(x, y, 2, x, y, 18 + rand() * 26);
+        s.addColorStop(0, 'rgba(110, 80, 30, 0.55)');
+        s.addColorStop(0.8, 'rgba(90, 60, 20, 0.35)');
+        s.addColorStop(1, 'rgba(90, 60, 20, 0)');
+        c.fillStyle = s;
+        c.fillRect(i * 64, j * 64, 64, 64);
+      }
+      // Speckled tile texture
+      c.fillStyle = 'rgba(60, 58, 44, 0.25)';
+      for (let k = 0; k < 30; k++) c.fillRect(i * 64 + rand() * 64, j * 64 + rand() * 64, 2, 2);
+    }
+    c.strokeStyle = '#4a4636';
+    c.lineWidth = 4;
+    for (let k = 0; k <= 512; k += 64) {
+      c.beginPath();
+      c.moveTo(k, 0);
+      c.lineTo(k, 512);
+      c.moveTo(0, k);
+      c.lineTo(512, k);
+      c.stroke();
+    }
+  });
+  ceilTex.wrapS = ceilTex.wrapT = THREE.RepeatWrapping;
+  ceilTex.repeat.set((WALL_X * 2) / 4.8, ROOM_LEN / 4.8);
+
+  // Mismatched, stained carpet tiles
+  const floorTex = canvasTexture(256, 256, (c) => {
+    const greys = ['#4a4838', '#3e3d30', '#55513c', '#46402e', '#3a3b34'];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      c.fillStyle = pick(greys);
+      c.fillRect(i * 64, j * 64, 64, 64);
+      c.fillStyle = 'rgba(0, 0, 0, 0.12)';
+      for (let k = 0; k < 60; k++) c.fillRect(i * 64 + rand() * 64, j * 64 + rand() * 64, 2, 2);
+    }
+    for (let k = 0; k < 5; k++) {
+      const x = rand() * 256;
+      const y = rand() * 256;
+      const s = c.createRadialGradient(x, y, 2, x, y, 14 + rand() * 24);
+      s.addColorStop(0, 'rgba(40, 24, 8, 0.7)'); // coffee, mostly
+      s.addColorStop(1, 'rgba(40, 24, 8, 0)');
+      c.fillStyle = s;
+      c.fillRect(x - 40, y - 40, 80, 80);
+    }
+    c.strokeStyle = 'rgba(15, 14, 8, 0.6)';
+    c.lineWidth = 2;
+    for (let k = 0; k <= 256; k += 64) {
+      c.beginPath();
+      c.moveTo(k, 0);
+      c.lineTo(k, 256);
+      c.moveTo(0, k);
+      c.lineTo(256, k);
+      c.stroke();
+    }
+  });
+  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+  floorTex.repeat.set(5, 18);
+  room(
+    g,
+    std('#ffffff', { map: wallTex, roughness: 0.95 }),
+    std('#ffffff', { map: ceilTex, roughness: 1 }),
+    std('#ffffff', { map: endTex, roughness: 0.95 }),
+    std('#ffffff', { map: floorTex, roughness: 1 }),
+  );
+  // A rotten-tomato emblem on a nicotine-stained panel; the sign has seen better days
+  const { sign } = signage(g, 'MEM', '★ OUT OF MEMORY ★', '#a6ff3a', '#ffb02e', 'LANE 000', '#6e6a4c', '#3a3826', '#8a5a1c', '#7a4a26');
+  const signMat = sign.material as THREE.MeshBasicMaterial;
+  g.add(scoreMonitor(scores, CEIL_Y));
+
+  // ---- Shared props ----
+  const beige = std('#c4b78e', { roughness: 0.7 });
+  const beigeDirty = std('#a39570', { roughness: 0.8 });
+  const darkPlastic = std('#2b2a26', { roughness: 0.6 });
+  const metal = std('#5d5c52', { metalness: 0.5, roughness: 0.6 });
+  const rust = std('#6a3c1e', { roughness: 1 });
+  const laminate = std('#5e5040', { roughness: 0.85 });
+  const fabric = std('#2f3640', { roughness: 1 });
+  const cardboard = std('#9a7448', { roughness: 1 });
+  const paper = std('#d4ccb0', { roughness: 1 });
+  const mug = std('#d8d2c0', { roughness: 0.5 });
+  const can = std('#4caa2c', { metalness: 0.6, roughness: 0.35 });
+  const cable = std('#1c1c1a', { roughness: 0.7 });
+  const cableColours = [cable, std('#2a4a8a'), std('#c8b42a'), std('#7a7a72')];
+
+  // Monitor pictures: every crash an engineer has ever seen. Each kind flickers on its own.
+  const screens = [
+    screenTexture((c) => {
+      c.fillStyle = '#031006';
+      c.fillRect(0, 0, 256, 192);
+      textLines(c, ['$ make', 'cc -O2 tomato.c', 'Segmentation fault', '  (core dumped)', '$ make', 'Segmentation fault', '$ _'], '#46e86a', 12, 26, 17, 24);
+    }),
+    screenTexture((c) => {
+      c.fillStyle = '#1a2fa8';
+      c.fillRect(0, 0, 256, 192);
+      textLines(c, ['FATAL EXCEPTION', '', 'MEMORY_NOT_FOUND', 'at 0x000DAVE', '', 'press any key', '(there is no key)'], '#e8ecff', 12, 28, 16, 22);
+    }),
+    screenTexture((c) => {
+      c.fillStyle = '#050505';
+      c.fillRect(0, 0, 256, 192);
+      c.strokeStyle = '#9a9a9a';
+      c.lineWidth = 3;
+      c.strokeRect(58, 72, 140, 48);
+      textLines(c, ['NO SIGNAL'], '#c8c8c8', 78, 103, 20, 0);
+    }),
+    screenTexture((c) => {
+      c.fillStyle = '#4a6a6a';
+      c.fillRect(0, 0, 256, 192);
+      c.fillStyle = '#c8c4b8';
+      c.fillRect(30, 40, 196, 112);
+      c.fillStyle = '#20206a';
+      c.fillRect(30, 40, 196, 20);
+      textLines(c, ['Error'], '#ffffff', 36, 55, 14, 0);
+      textLines(c, ['Out of memory.', 'Close some', 'programs?'], '#111111', 44, 84, 15, 18);
+      c.strokeStyle = '#111';
+      c.strokeRect(160, 124, 52, 20);
+      textLines(c, ['OK'], '#111111', 176, 139, 14, 0);
+    }),
+    screenTexture((c) => {
+      c.fillStyle = '#0d0a02';
+      c.fillRect(0, 0, 256, 192);
+      textLines(c, ['TICKET QUEUE', '', 'OPEN:    4,096', 'URGENT:  4,095', 'CLOSED:      0', '', 'ON CALL: YOU'], '#ffb000', 14, 28, 17, 23);
+    }),
+    screenTexture((c) => {
+      const img = c.createImageData(256, 192);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random() * 180;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      c.putImageData(img, 0, 0);
+    }),
+  ].map((map) => new THREE.MeshBasicMaterial({ map, toneMapped: false }));
+  const deadScreen = std('#0d0f0c', { roughness: 0.2, metalness: 0.3 });
+  const screenGeo = new THREE.PlaneGeometry(0.31, 0.24);
+
+  /** A chunky old CRT monitor, front facing +z, sitting on y = 0. */
+  const crt = (screen: THREE.Material, body = beige) => {
+    const m = new THREE.Group();
+    m.add(boxAt(0.4, 0.34, 0.3, body, 0, 0.19, 0));
+    m.add(boxAt(0.3, 0.26, 0.22, body, 0, 0.18, -0.25));
+    m.add(boxAt(0.2, 0.03, 0.2, body, 0, 0.015, -0.05));
+    const s = new THREE.Mesh(screenGeo, screen);
+    s.position.set(0, 0.2, 0.152);
+    m.add(s);
+    return m;
+  };
+  /** A beige tower PC, front facing +z. */
+  const tower = (body = beige) => {
+    const t = new THREE.Group();
+    t.add(boxAt(0.19, 0.42, 0.44, body, 0, 0.21, 0));
+    t.add(boxAt(0.13, 0.035, 0.01, darkPlastic, 0, 0.34, 0.222));
+    t.add(boxAt(0.13, 0.035, 0.01, darkPlastic, 0, 0.29, 0.222));
+    return t;
+  };
+  const keyboard = () => boxAt(0.44, 0.03, 0.15, beigeDirty, 0, 0.015, 0);
+  /** An office chair facing +z; `tipped` lays it on its side. */
+  const chair = (tipped: boolean) => {
+    const c = new THREE.Group();
+    c.add(boxAt(0.46, 0.08, 0.44, fabric, 0, 0.47, 0));
+    c.add(boxAt(0.42, 0.5, 0.06, fabric, 0, 0.8, -0.22));
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.4, 8), metal);
+    pole.position.y = 0.24;
+    c.add(pole);
+    for (const a of [0, Math.PI / 2.5, (2 * Math.PI) / 2.5, (3 * Math.PI) / 2.5, (4 * Math.PI) / 2.5]) {
+      const leg = boxAt(0.3, 0.03, 0.04, darkPlastic, Math.cos(a) * 0.15, 0.04, Math.sin(a) * 0.15);
+      leg.rotation.y = -a;
+      c.add(leg);
+    }
+    if (tipped) {
+      const wrap = new THREE.Group();
+      c.rotation.z = Math.PI / 2;
+      c.position.set(0.47, 0.23, 0);
+      wrap.add(c);
+      return wrap;
+    }
+    return c;
+  };
+  const cylAt = (r: number, h: number, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), mat);
+    m.position.set(x, y + h / 2, z);
+    return m;
+  };
+  /** A tangle of cable lying on the floor (or wherever it's dropped). */
+  const tangle = (x: number, y: number, z: number, size: number, loops = 6) => {
+    const t = new THREE.Group();
+    for (let k = 0; k < loops; k++) {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 7; i++) pts.push(new THREE.Vector3((rand() - 0.5) * size, rand() * size * 0.35, (rand() - 0.5) * size));
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 40, 0.012, 5, true), pick(cableColours));
+      t.add(tube);
+    }
+    t.position.set(x, y, z);
+    return t;
+  };
+  /** Old hardware for the piles and the skips: a random CRT, tower, keyboard, printer or box. */
+  const junk = () => {
+    const r = rand();
+    if (r < 0.3) return crt(rand() < 0.5 ? deadScreen : screens[5], rand() < 0.5 ? beige : beigeDirty);
+    if (r < 0.5) return tower(rand() < 0.5 ? beige : beigeDirty);
+    if (r < 0.62) return keyboard();
+    if (r < 0.75) {
+      const p = new THREE.Group(); // a laser printer that never worked
+      p.add(boxAt(0.42, 0.24, 0.38, beigeDirty, 0, 0.12, 0), boxAt(0.3, 0.02, 0.2, paper, 0, 0.25, 0.04));
+      return p;
+    }
+    if (r < 0.88) {
+      const b = new THREE.Group();
+      b.add(boxAt(0.4, 0.3, 0.32, cardboard, 0, 0.15, 0));
+      return b;
+    }
+    const rack = new THREE.Group(); // a 1U server, pulled out and abandoned
+    rack.add(boxAt(0.48, 0.05, 0.5, metal, 0, 0.025, 0));
+    return rack;
+  };
+  const scatter = (o: THREE.Object3D, x: number, y: number, z: number, tilt = 0.5) => {
+    o.position.set(x, y, z);
+    o.rotation.set((rand() - 0.5) * tilt, rand() * Math.PI * 2, (rand() - 0.5) * tilt);
+    return o;
+  };
+
+  // ---- Skips: two dumped on the neighbouring lanes, two in the corners behind the bowler ----
+  const skipTex = canvasTexture(256, 128, (c) => {
+    c.fillStyle = '#c4961a';
+    c.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 26; i++) {
+      // Rust bleeding down from the rim and dents
+      const x = rand() * 256;
+      const grd = c.createLinearGradient(0, 0, 0, 40 + rand() * 80);
+      grd.addColorStop(0, 'rgba(110, 50, 15, 0.8)');
+      grd.addColorStop(1, 'rgba(110, 50, 15, 0)');
+      c.fillStyle = grd;
+      c.fillRect(x, 0, 3 + rand() * 12, 128);
+    }
+    c.fillStyle = 'rgba(30, 24, 10, 0.4)';
+    c.fillRect(0, 100, 256, 28);
+    c.fillStyle = '#1e1a10';
+    c.font = '900 26px "Arial Black", sans-serif';
+    c.textAlign = 'center';
+    c.fillText('NO HOT ASHES', 128, 70);
+  });
+  const skipMat = std('#ffffff', { map: skipTex, metalness: 0.3, roughness: 0.75 });
+  const skip = (x: number, z: number, turn: number, len: number) => {
+    const s = new THREE.Group();
+    const w = 1.0;
+    const h = 0.8;
+    s.add(new THREE.Mesh(skipBody(w, h, len), skipMat));
+    // Rim and the lugs the lorry lifts it by
+    s.add(boxAt(w * 1.06 + 0.06, 0.06, 0.05, rust, 0, h, (len * 1.35) / 2));
+    s.add(boxAt(w * 1.06 + 0.06, 0.06, 0.05, rust, 0, h, (-len * 1.35) / 2));
+    for (const side of [-1, 1]) {
+      s.add(boxAt(0.05, 0.06, len * 1.35, rust, (side * w * 1.06) / 2, h, 0));
+      s.add(boxAt(0.08, 0.14, 0.08, rust, (side * w) / 2 + side * 0.03, 0.55, 0));
+    }
+    // Filled to overflowing
+    s.add(boxAt(w, 0.02, len * 1.25, std('#26231a', { roughness: 1 }), 0, h - 0.06, 0));
+    const count = Math.round(len * 5);
+    for (let k = 0; k < count; k++) s.add(scatter(junk(), (rand() - 0.5) * (w - 0.3), h - 0.12 + rand() * 0.25, (rand() - 0.5) * (len * 1.2 - 0.3), 1.6));
+    s.add(tangle(0, h, 0, 0.6, 4));
+    s.position.set(x, 0, z);
+    s.rotation.y = turn;
+    props.add(s);
+  };
+  const SKIP_GAPS: Record<number, number> = { [-1]: -6.6, [1]: -11.2 };
+  skip(-(WALL_X - 0.62), SKIP_GAPS[-1], 0.04, 2.0);
+  skip(WALL_X - 0.62, SKIP_GAPS[1], -0.05, 2.0);
+  skip(-2.15, 7.45, Math.PI / 2 + 0.06, 1.5);
+  skip(2.2, 7.35, Math.PI / 2 - 0.08, 1.5);
+
+  // ---- Computer desks down both walls ----
+  for (const side of [-1, 1]) {
+    for (let z = 3.7; z > -16.8; z -= 1.55) {
+      if (Math.abs(z - SKIP_GAPS[side]) < 1.9) continue;
+      const desk = new THREE.Group();
+      // Desk-local frame: +z points away from the wall (towards the lanes), x runs along the wall
+      desk.add(boxAt(1.4, 0.04, 0.66, laminate, 0, 0.72, 0.33));
+      for (const end of [-0.67, 0.67]) desk.add(boxAt(0.03, 0.7, 0.62, laminate, end, 0.35, 0.33));
+      desk.add(boxAt(1.3, 0.4, 0.02, laminate, 0, 0.45, 0.04));
+      // One or two monitors, facing the chair (and us)
+      const two = rand() < 0.35;
+      const screenFor = () => (rand() < 0.2 ? deadScreen : pick(screens.slice(0, 5)));
+      for (const off of two ? [-0.33, 0.3] : [(rand() - 0.5) * 0.4]) {
+        const m = crt(screenFor(), rand() < 0.6 ? beige : beigeDirty);
+        m.position.set(off, 0.74, 0.27);
+        m.rotation.y = (rand() - 0.5) * 0.4;
+        desk.add(m);
+      }
+      const kb = keyboard();
+      kb.position.set((rand() - 0.5) * 0.2, 0.74, 0.54);
+      kb.rotation.y = (rand() - 0.5) * 0.3;
+      desk.add(kb);
+      // Tower on the floor beside the desk, or on the desk
+      const tw = tower(rand() < 0.5 ? beige : beigeDirty);
+      if (rand() < 0.7) tw.position.set(0.45, 0, 0.3);
+      else tw.position.set(0.55, 0.74, 0.25);
+      tw.rotation.y = (rand() - 0.5) * 0.3;
+      desk.add(tw);
+      // Clutter: cold coffee, energy drinks, pizza boxes, paperwork that will never be filed
+      for (let k = 0; k < 2 + Math.floor(rand() * 3); k++) {
+        const x = (rand() - 0.5) * 1.2;
+        const zz = 0.45 + rand() * 0.18;
+        const r = rand();
+        if (r < 0.35) desk.add(cylAt(0.04, 0.09, mug, x, 0.74, zz));
+        else if (r < 0.65) {
+          const c = cylAt(0.033, 0.12, can, x, 0.74, zz);
+          if (rand() < 0.4) {
+            c.rotation.z = Math.PI / 2; // empty, knocked over
+            c.position.y = 0.775;
+          }
+          desk.add(c);
+        } else if (r < 0.85) {
+          for (let p = 0; p < 1 + Math.floor(rand() * 4); p++) {
+            const b = boxAt(0.36, 0.04, 0.36, cardboard, x * 0.5, 0.76 + p * 0.042, 0.4);
+            b.rotation.y = (rand() - 0.5) * 0.4;
+            desk.add(b);
+          }
+        } else desk.add(boxAt(0.22, 0.03 + rand() * 0.12, 0.3, paper, x, 0.74 + 0.03, 0.4));
+      }
+      // Cables spilling down the back of the desk
+      if (rand() < 0.6) desk.add(tangle((rand() - 0.5) * 0.8, 0.02, 0.15, 0.5, 3));
+      // The chair, pushed back or knocked over (sometimes long gone)
+      const r = rand();
+      if (r < 0.85) {
+        const ch = chair(r < 0.22);
+        ch.position.set((rand() - 0.5) * 0.4, 0, 0.95 + rand() * 0.15);
+        ch.rotation.y += Math.PI + (rand() - 0.5) * 0.9; // facing the desk
+        desk.add(ch);
+      }
+      desk.position.set(side * WALL_X, 0, z);
+      desk.rotation.y = -side * (Math.PI / 2);
+      props.add(desk);
+    }
+  }
+
+  // ---- Notices taped to the walls above the desks ----
+  const notices: [string[], string, number][] = [
+    [['HAVE YOU', 'TRIED TURNING', 'IT OFF AND', 'ON AGAIN?'], '#1e1a10', 2.7],
+    [['RTFM'], '#8a1a10', -1.9],
+    [["IT'S", 'ALWAYS', 'DNS'], '#1e1a10', -5.2],
+    [['DO NOT', 'UNPLUG', '(PROD)'], '#a01810', -9.6],
+    [['CHANGE', 'FREEZE', 'IN EFFECT'], '#1a2a6a', -13.4],
+    [['WORKS ON', 'MY MACHINE'], '#1e1a10', 0.6],
+    [['ON CALL', 'ROTA:', 'YOU', 'YOU', 'YOU'], '#1e1a10', -3.9],
+    [['WHO TOOK', 'MY MUG?'], '#8a1a10', -8.0],
+    [['BACKUPS', 'TESTED:', 'NEVER'], '#1e1a10', -14.6],
+  ];
+  notices.forEach(([lines, ink, z], i) => {
+    const side = i % 2 ? 1 : -1;
+    const p = plane(0.5, 0.62, std('#ffffff', { map: notice(lines, ink), roughness: 1 }), [side * (WALL_X - 0.012), 1.75 + rand() * 0.5, z], [0, -side * (Math.PI / 2), 0]);
+    p.rotation.z = (rand() - 0.5) * 0.25;
+    props.add(p);
+  });
+
+  // ---- Old hardware piled up behind the bowler ----
+  // Towers of dead CRTs against the back wall, between the skips
+  for (const x of [-0.75, -0.25, 0.3, 0.8]) {
+    const n = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const m = crt(deadScreen, rand() < 0.5 ? beige : beigeDirty);
+      m.position.set(x + (rand() - 0.5) * 0.08, k * 0.38, 8.1 + (rand() - 0.5) * 0.1);
+      m.rotation.y = Math.PI + (rand() - 0.5) * 0.3;
+      props.add(m);
+    }
+  }
+  // A server rack that fell over, leaning on the wall, and a heap beside it
+  const deadRack = boxAt(0.6, 2.0, 0.7, std('#1e2026', { metalness: 0.4, roughness: 0.6 }), 0, 1.0, 0);
+  const rackPivot = new THREE.Group();
+  rackPivot.add(deadRack);
+  deadRack.position.x = -0.3; // pivot on its outer bottom edge, so it leans back onto the wall
+  rackPivot.position.set(3.1, 0, 5.4);
+  rackPivot.rotation.z = -0.12;
+  props.add(rackPivot);
+  for (let k = 0; k < 9; k++) props.add(scatter(junk(), 1.95 + rand() * 0.6, 0, 4.9 + rand() * 1.2));
+  props.add(tangle(2.0, 0.02, 6.3, 0.9, 8));
+  // Boxes of "spare" cables and a stack of pizza boxes on the other side
+  const boxLabel = canvasTexture(256, 192, (c) => {
+    c.fillStyle = '#9a7448';
+    c.fillRect(0, 0, 256, 192);
+    c.fillStyle = '#1e1a10';
+    c.font = '900 34px "Arial Black", sans-serif';
+    c.textAlign = 'center';
+    c.fillText('CABLES', 128, 80);
+    c.font = '700 26px "Trebuchet MS", sans-serif';
+    c.fillText('(MISC.) (OLD)', 128, 124);
+    c.fillText('(SCART?)', 128, 160);
+  });
+  const labelled = [std('#ffffff', { map: boxLabel, roughness: 1 }), cardboard];
+  for (const [x, y, z, ry] of [[-2.75, 0, 5.0, 0.1], [-2.7, 0.42, 5.05, -0.15], [-2.2, 0, 5.2, 0.4]] as const) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.45), [cardboard, cardboard, cardboard, cardboard, labelled[0], cardboard]);
+    b.position.set(x, y + 0.21, z);
+    b.rotation.y = ry;
+    g.add(b); // multi-material, so kept out of the bake
+  }
+  for (let p = 0; p < 7; p++) {
+    const b = boxAt(0.38, 0.045, 0.38, cardboard, -1.95 + (rand() - 0.5) * 0.04, 0.023 + p * 0.046, 6.15);
+    b.rotation.y = (rand() - 0.5) * 0.3;
+    props.add(b);
+  }
+  // A leak in the ceiling tile above a bucket (see the drip below)
+  const BUCKET: [number, number] = [-1.75, 4.85];
+  const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.3, 16, 1, true), std('#2a5a9a', { roughness: 0.6, side: THREE.DoubleSide }));
+  bucket.position.set(BUCKET[0], 0.15, BUCKET[1]);
+  props.add(bucket, cylAt(0.15, 0.01, std('#3a3a22', { roughness: 0.2 }), BUCKET[0], 0.2, BUCKET[1]));
+  props.add(plane(0.6, 0.6, std('#2a2412', { roughness: 0.15, transparent: true, opacity: 0.6 }), [BUCKET[0] + 0.15, 0.004, BUCKET[1] + 0.1], [-Math.PI / 2, 0, 0]));
+
+  // ---- Fluorescent tubes: most a grim green-white, two flickering, one dead, one hanging loose ----
+  const tubeOn = basic('#dfeec8');
+  const tubeDead = std('#4a4c44');
+  const flickerMats = [basic('#dfeec8'), basic('#dfeec8')];
+  const housing = std('#8a8672', { roughness: 0.8 });
+  let n = 0;
+  for (let z = 3.2; z > DECK_END_Z + 1; z -= 3.3) {
+    for (const x of [-1.35, 1.35]) {
+      const fit = new THREE.Group();
+      fit.add(boxAt(0.24, 0.06, 1.3, housing, 0, 0, 0));
+      const mat = n === 3 ? flickerMats[0] : n === 8 ? flickerMats[1] : n === 5 ? tubeDead : tubeOn;
+      for (const dx of [-0.05, 0.05]) fit.add(boxAt(0.04, 0.035, 1.2, mat, dx, -0.04, 0));
+      fit.position.set(x, CEIL_Y - 0.04, z);
+      if (n === 6) {
+        // One end has come down and dangles on its wires
+        fit.position.y -= 0.22;
+        fit.rotation.x = 0.36;
+      }
+      props.add(fit);
+      n++;
+    }
+  }
+
+  // Cables hanging out of the gaps in the ceiling, swaying in the draught
+  const hanging: THREE.Group[] = [];
+  for (const [x, z, drop] of [[0.6, -3.5, 1.0], [-2.2, 1.5, 1.3], [2.1, -8.5, 1.1], [-0.8, -12.5, 0.8]] as const) {
+    const h = new THREE.Group();
+    for (let k = 0; k < 3; k++) {
+      const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3((rand() - 0.5) * 0.3, -drop * 0.6, (rand() - 0.5) * 0.3), new THREE.Vector3((rand() - 0.5) * 0.5, -drop, (rand() - 0.5) * 0.4), new THREE.Vector3((rand() - 0.5) * 0.6, -drop * 0.7, (rand() - 0.5) * 0.6)];
+      h.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.011, 5), pick(cableColours)));
+    }
+    h.add(boxAt(0.64, 0.01, 0.64, basic('#0a0906'), 0, -0.005, 0)); // the hole the tile fell out of
+    h.position.set(x, CEIL_Y - 0.005, z);
+    g.add(h);
+    hanging.push(h);
+  }
+
+  // ---- Corkboards crammed with junk, and vines creeping in through the damp ----
+  const cork = (z: number, side: number, y: number) => {
+    const tex = canvasTexture(384, 256, (c) => {
+      c.fillStyle = '#a07848';
+      c.fillRect(0, 0, 384, 256);
+      for (let k = 0; k < 900; k++) {
+        c.fillStyle = `rgba(${rand() < 0.5 ? '70, 46, 20' : '190, 150, 100'}, 0.5)`;
+        c.fillRect(rand() * 384, rand() * 256, 2, 2);
+      }
+      const bits = ['INVOICE', 'TODO', 'PIN: 1234', 'WIFI??', 'CALL BACK', 'TICKET #9', 'P/W ON BACK', 'LUNCH?', 'REBOOT', 'BROKEN', 'CHASE IT', ':('];
+      const colours = ['#f2e86a', '#f6a6c0', '#9ad8f0', '#e8e4d4', '#b8e890', '#ffffff'];
+      for (let k = 0; k < 22; k++) {
+        const w = 50 + rand() * 60;
+        const h = 40 + rand() * 50;
+        const x = rand() * (384 - w);
+        const yy = rand() * (256 - h);
+        c.save();
+        c.translate(x + w / 2, yy + h / 2);
+        c.rotate((rand() - 0.5) * 0.5);
+        c.fillStyle = pick(colours);
+        c.fillRect(-w / 2, -h / 2, w, h);
+        c.fillStyle = 'rgba(30, 30, 40, 0.8)';
+        c.font = '700 11px "Courier New", monospace';
+        c.fillText(pick(bits), -w / 2 + 4, -h / 2 + 16);
+        for (let l = 0; l < 3; l++) c.fillRect(-w / 2 + 4, -h / 2 + 24 + l * 7, w * (0.3 + rand() * 0.5), 1.5);
+        c.fillStyle = pick(['#d02020', '#2040d0', '#20a040']);
+        c.beginPath();
+        c.arc(0, -h / 2 + 5, 4, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+      c.strokeStyle = '#5a4026';
+      c.lineWidth = 14;
+      c.strokeRect(0, 0, 384, 256);
+    });
+    const p = plane(1.2, 0.8, std('#ffffff', { map: tex, roughness: 1 }), [side * (WALL_X - 0.015), y, z], [0, -side * (Math.PI / 2), 0]);
+    p.rotation.z = (rand() - 0.5) * 0.06;
+    props.add(p);
+  };
+  cork(-0.9, -1, 2.0);
+  cork(-11.5, -1, 2.1);
+  cork(-6.4, 1, 2.0);
+  cork(1.6, 1, 2.2);
+
+  const leafMats = [std('#3d6a24', { roughness: 0.9, side: THREE.DoubleSide }), std('#4f7c2c', { roughness: 0.9, side: THREE.DoubleSide }), std('#5a6a26', { roughness: 0.9, side: THREE.DoubleSide })];
+  const stem = std('#4a3a1c', { roughness: 1 });
+  const leafGeo = new THREE.CircleGeometry(0.06, 6);
+  /** A vine creeping out of a ceiling corner and trailing down the wall. */
+  const vine = (side: number, z: number, len: number) => {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const f = i / 8;
+      pts.push(new THREE.Vector3(side * (WALL_X - 0.04 - rand() * 0.05), CEIL_Y - f * len, z + Math.sin(f * 6 + rand()) * 0.35 + (rand() - 0.5) * 0.1));
+    }
+    // A run along the ceiling edge too
+    for (let i = 1; i <= 4; i++) pts.unshift(new THREE.Vector3(side * (WALL_X - 0.05), CEIL_Y - 0.03, pts[0].z + 0.4 * (rand() < 0.5 ? 1 : -1) * 0.5 + i * 0.3));
+    const curve = new THREE.CatmullRomCurve3(pts);
+    props.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.012, 5), stem));
+    for (let k = 0; k < 70; k++) {
+      const at = curve.getPoint(rand());
+      const leaf = new THREE.Mesh(leafGeo, pick(leafMats));
+      leaf.position.set(at.x - side * 0.03, at.y + (rand() - 0.5) * 0.1, at.z + (rand() - 0.5) * 0.14);
+      leaf.rotation.set((rand() - 0.5) * 1.2, -side * (Math.PI / 2) + (rand() - 0.5) * 1.2, rand() * Math.PI);
+      leaf.scale.setScalar(0.7 + rand() * 0.7);
+      props.add(leaf);
+    }
+  };
+  vine(-1, -3.2, 2.6);
+  vine(1, -9.0, 2.2);
+  vine(-1, -14.2, 1.8);
+  vine(1, 3.4, 2.4);
+
+  // The neighbouring lanes are closed: hazard tape across them (it's where the skips went)
+  const tape = canvasTexture(256, 16, (c) => {
+    for (let x = -16; x < 256; x += 32) {
+      c.fillStyle = '#e8c21a';
+      c.fillRect(x, 0, 32, 16);
+      c.fillStyle = '#16140c';
+      c.beginPath();
+      c.moveTo(x + 16, 0);
+      c.lineTo(x + 32, 0);
+      c.lineTo(x + 16, 16);
+      c.lineTo(x, 16);
+      c.fill();
+    }
+  });
+  const tapeMat = std('#ffffff', { map: tape, roughness: 0.6, side: THREE.DoubleSide });
+  for (const side of [-1, 1]) {
+    for (const z of [-0.4, -15.5]) {
+      // Strung between two traffic cones, sagging in the middle
+      const x0 = side * (NEIGHBOUR_X - 0.62);
+      const x1 = side * (WALL_X - 0.05);
+      const t = plane(Math.abs(x1 - x0), 0.06, tapeMat, [(x0 + x1) / 2, 0.62, z]);
+      t.rotation.z = side * 0.04;
+      props.add(t);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.65, 12), std('#d8541a', { roughness: 0.7 }));
+      cone.position.set(x0, 0.325, z);
+      props.add(cone, boxAt(0.26, 0.03, 0.26, std('#1e1c18'), x0, 0.015, z));
+    }
+  }
+
+  g.add(bake(props));
+
+  // The drip from the ceiling into the bucket
+  const drip = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), std('#a8b0a0', { roughness: 0.1, metalness: 0.2 }));
+  g.add(drip);
+
+  let lights: Lighting | null = null;
+  const HEMI = 0.68;
+  let lastFlicker = -1;
+  return {
+    group: g,
+    update: (t) => {
+      // Drip: falls from the stain on the ceiling, plops into the bucket, again and again
+      const cycle = t % 1.7;
+      const fall = Math.min(cycle, 0.85);
+      drip.position.set(BUCKET[0], CEIL_Y - 0.02 - 4.9 * fall * fall, BUCKET[1]);
+      drip.visible = cycle < 0.85;
+      // Hanging cables sway a little
+      hanging.forEach((h, i) => (h.rotation.z = Math.sin(t * 0.8 + i * 1.7) * 0.06));
+      if (t - lastFlicker < 0.05) return;
+      lastFlicker = t;
+      // Two tubes stutter in bursts; the room dims a touch with the worst of them
+      flickerMats.forEach((m, i) => {
+        const burst = (t + i * 2.3) % (i ? 5.3 : 3.7) < 0.9;
+        const on = !burst || Math.random() < 0.45;
+        m.color.set(on ? '#dfeec8' : '#3a3c34');
+        if (i === 0 && lights) lights.hemi.intensity = on ? HEMI : HEMI * 0.82;
+      });
+      // The sign keeps cutting out
+      signMat.opacity = (t % 6.1) < 0.7 && Math.random() < 0.6 ? 0.25 : 1;
+      // Monitors flicker and roll now and then
+      screens.forEach((s, i) => s.color.setScalar(Math.random() < 0.06 ? 0.55 : 0.85 + Math.sin(t * 9 + i) * 0.08));
+    },
+    apply: (scene, l) => {
+      lights = l;
+      scene.background = new THREE.Color('#0e0f09');
+      scene.fog = new THREE.Fog('#16170e', 14, 40);
+      l.hemi.color.set('#dfe6b8');
+      l.hemi.groundColor.set('#2a2616');
+      l.hemi.intensity = HEMI;
+      l.key.color.set('#eef2d6');
+      l.key.intensity = 1.15;
+      l.fill.color.set('#aab07a');
+    },
+  };
+}
+
+const BUILDERS: Record<VenueId, (scores: THREE.Texture) => Built> = { classic, server, disco, rooftop, golden, mem };
 
 /** Builds venues on first use and swaps between them. */
 export class VenueManager {
