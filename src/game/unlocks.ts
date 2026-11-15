@@ -8,6 +8,7 @@ export interface Progress {
   splitConverted: boolean; // picked up a split for a spare
   homeChampion: boolean; // won the Tomato Dave's career ladder
   crowns: string[]; // career venues you're champion of (ladder ids)
+  skillsChampion: boolean; // made every shot in the MEM Skills Challenge
 }
 
 export const NEW_PROGRESS: Progress = {
@@ -18,6 +19,7 @@ export const NEW_PROGRESS: Progress = {
   splitConverted: false,
   homeChampion: false,
   crowns: [],
+  skillsChampion: false,
 };
 
 export type ItemKind = 'ball' | 'suit';
@@ -51,6 +53,7 @@ export const ITEMS: Item[] = [
   { id: 'blazer', kind: 'suit', name: "Champion's Blazer", how: "Beat Carrot Carl to top the Tomato Dave's ladder", unlocked: (p) => p.homeChampion },
   { id: 'glitter', kind: 'suit', name: 'Glitter Suit', how: 'Become champion of Disco Inferno', unlocked: (p) => p.crowns.includes('disco') },
   { id: 'goldsuit', kind: 'suit', name: 'Golden Dave', how: 'Win the Golden Pin', unlocked: (p) => p.crowns.includes('golden') },
+  { id: 'hoodie', kind: 'suit', name: "Engineer's Hoodie", how: 'Make every shot in the MEM Skills Challenge', unlocked: (p) => p.skillsChampion },
 ];
 
 export function unlockedIds(p: Progress): Set<string> {
@@ -102,5 +105,6 @@ export function mergeProgress(p: Progress, change: Partial<Progress>): Progress 
     splitConverted: p.splitConverted || !!change.splitConverted,
     homeChampion: p.homeChampion || !!change.homeChampion,
     crowns: [...new Set([...(p.crowns ?? []), ...(change.crowns ?? [])])],
+    skillsChampion: !!p.skillsChampion || !!change.skillsChampion,
   };
 }

@@ -17,6 +17,8 @@ type Game = {
   startGame(mode: string): void;
   startCpu(id: string): void;
   startCareerMatch(ladder: number, rung: number, log?: number[]): void;
+  startShot(i: number): void;
+  skills: { stars: Record<string, number> };
   lane: { wind: number; oilEnd: number };
   showScreen(id: string | null): void;
   career: { results: Record<string, { wins: number } | undefined>; inProgress?: unknown };
@@ -173,6 +175,20 @@ async function main() {
     check(lane.wind !== 0 && (await page.isVisible('#wind')), `and the breeze is blowing (${lane.wind}) and shown`);
     await page.evaluate(() => window.__game.showScreen('menu'));
     check((await page.evaluate(() => window.__game.lane.wind)) === 0 && !(await page.isVisible('#wind')), 'back at the menu, the lane is back to normal');
+
+    // The Skills Challenge: the first shot, straight through the keyboard gate at the head pin
+    await page.evaluate(() => window.__game.startShot(0));
+    check((await page.textContent('#venue-name'))?.includes('MEM') ?? false, 'a Skills Challenge shot is played at MEM');
+    await page.evaluate(() => window.__game.throwBall(0, 0, 0.6, 0));
+    await page.waitForFunction(() => window.__game.phase === 'result', null, { timeout: 60_000 });
+    await page.evaluate(() => {
+      window.__game.controls.advance();
+      window.__game.controls.advance();
+    });
+    await page.waitForFunction(() => window.__game.screen === 'gameover', null, { timeout: 60_000 });
+    check((await page.evaluate(() => window.__game.skills.stars.hello)) === 3, 'made first time: 3 stars, saved');
+    check(await page.isVisible('#gc-next'), 'and the next shot is offered');
+    await page.evaluate(() => window.__game.showScreen('menu'));
 
     check(errors.length === 0, `no errors in the console${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {

@@ -19,7 +19,9 @@ Each venue is a **league** with three rivals and a **champion**. You play each r
 | 3 | Disco Inferno | 3 tricky | Aubergine Annie | Rooftop at Sunset |
 | 4 | Rooftop at Sunset | 3 hard | Big Russet | The Golden Pin |
 | Final | The Golden Pin (new venue) | — | The Pumpkin King | Golden Dave suit, credits |
+| Encore | MEM | — | Six trick shots | Engineer's Hoodie |
 
+- **Encore, the MEM Skills Challenge:** opens once you've won the Golden Pin (the page after the Golden Pin on the ladder screen). Each shot is a set of pins with broken keyboards (stood on edge) and mice fixed on the lane as obstacles; knock every pin down in one ball, with three goes. Stars by go (3/2/1); shots open one at a time. Separately, MEM opens for free play the first time you score 200 in any game.
 - **Ladder screen:** a vertical "tournament poster" for each venue. The rivals sit as rungs with faces, records and a star rating, and the champion is at the top. Beaten rivals get a stamped tomato.
 - **Match lengths:** 5-frame matches against the early rivals, so new players get quick wins, and full 10-frame games against every champion and throughout stage 2 onwards.
 - **Turns:** you and the rival alternate frames, as in Pass & Play. The rival's turns can be fast-forwarded.
