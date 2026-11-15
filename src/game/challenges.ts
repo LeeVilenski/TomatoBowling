@@ -73,11 +73,11 @@ export const CHALLENGES: Challenge[] = [
     id: 'bank',
     name: 'Bank Transfer',
     emoji: '🏦',
-    blurb: 'A mouse blocks the left-hand boards and a keyboard walls off the 7 pin. Come at it across the lane, from the right.',
+    blurb: 'A mouse and a keyboard block the straight line down the left to the 7 pin. Start right of the keyboard and hook the ball back across with plenty of left spin.',
     pins: [7],
     obstacles: [
-      { kind: 'mouse', x: -0.46, z: -12 },
-      { kind: 'keyboard', x: -0.3, z: -16.5, angle: Math.PI / 2 },
+      { kind: 'mouse', x: -0.46, z: -10 },
+      { kind: 'keyboard', x: -0.36, z: -13, angle: Math.PI / 2 },
     ],
   },
   {
