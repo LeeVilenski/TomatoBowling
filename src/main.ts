@@ -26,7 +26,7 @@ import { chooseTarget, humanise, planThrow, pressureFor, strikeRun } from './gam
 import { RIVALS, rivalById, type Rival } from './game/rivals';
 import { addMatchStats, isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, NO_STATS, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
 import { FRAMES } from './game/scoring';
-import { allShotsMade, ATTEMPTS, CHALLENGES, isShotOpen, loadSkills, OBSTACLE_HALF, recordShot, skillsStars, starsForAttempt, type Obstacle } from './game/challenges';
+import { allShotsMade, CHALLENGES, GOES, isShotOpen, loadSkills, OBSTACLE_HALF, recordScore, skillsStars, starsFor as skillStarsFor, starsOf, type Obstacle } from './game/challenges';
 import { ObstacleView } from './scene/obstacles';
 import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
@@ -458,9 +458,11 @@ async function start() {
   // ---- Skills Challenge (career's encore at MEM): the shot being played and which go it is ----
   let skills = loadSkills(storage.skills());
   let shot = 0;
+  /** Which of the challenge's shots this is (1-based), and how each one went. */
   let attempt = 1;
-  /** Set once the shot is over: made it, or out of goes. */
-  let shotDone: 'made' | 'missed' | null = null;
+  let shotResults: boolean[] = [];
+  /** Set once the last shot of the challenge has been bowled. */
+  let shotDone = false;
   const obstacleView = new ObstacleView();
   scene.add(obstacleView.group);
   let obstacles: Obstacle[] = [];
@@ -537,7 +539,7 @@ async function start() {
     phase = 'result';
     resultTime = 0;
     reactionShown = false;
-    const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : mode === 'challenge' ? CHALLENGES[shot].pins.length === 10 : (match?.position.fresh ?? true);
+    const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : mode === 'challenge' ? CHALLENGES[shot].goes[attempt - 1].pins.length === 10 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
     // A computer rival's ball: the rival has its own say (at the same pace as Dave), and
     // there's no automatic replay (the button's there)
@@ -560,13 +562,10 @@ async function start() {
     if (mode === 'challenge') {
       const made = physics.standingPins().length === 0;
       celebrate(made && reaction !== 'strike' ? 'spare' : reaction, 1, true, { knocked });
-      if (made) {
-        shotDone = 'made';
-        setStatus(`Made it${attempt === 1 ? ' first time' : ''}! 🍅`);
-      } else if (attempt >= ATTEMPTS) {
-        shotDone = 'missed';
-        setStatus('Out of goes…');
-      } else setStatus(`Not this time: ${physics.standingPins().length} left standing`);
+      shotResults.push(made);
+      shotDone = attempt >= GOES;
+      const tally = `${shotResults.filter(Boolean).length} of ${attempt} made`;
+      setStatus(made ? `Made it! 🍅 ${tally}` : `Not this time: ${physics.standingPins().length} left · ${tally}`);
       nextSetter = 'rerack';
       return;
     }
@@ -646,7 +645,7 @@ async function start() {
       setterMode === 'rerack' && mode === 'practice' && practiceRack
         ? practiceRack
         : setterMode === 'rerack' && mode === 'challenge'
-          ? CHALLENGES[shot].pins
+          ? CHALLENGES[shot].goes[Math.min(attempt, GOES - 1)].pins
           : undefined;
     pinsetter.start(setterMode, () => afterPinsetter(setterMode), rack);
   }
@@ -676,6 +675,7 @@ async function start() {
     phase = 'aiming';
     if (mode === 'challenge') {
       attempt++;
+      setObstacles(CHALLENGES[shot].goes[attempt - 1].obstacles);
       shotStatus();
       return;
     }
@@ -887,11 +887,12 @@ async function start() {
     physics.holdBall(aimX);
     pinsetter.cancel();
     if (newMode === 'challenge') {
-      const c = CHALLENGES[shot];
-      for (let p = 1; p <= 10; p++) if (!c.pins.includes(p)) physics.removePin(p - 1);
-      setObstacles(c.obstacles);
+      const first = CHALLENGES[shot].goes[0];
+      for (let p = 1; p <= 10; p++) if (!first.pins.includes(p)) physics.removePin(p - 1);
+      setObstacles(first.obstacles);
       attempt = 1;
-      shotDone = null;
+      shotResults = [];
+      shotDone = false;
     } else if (obstacles.length) setObstacles([]);
     setFastForward(false);
     phase = 'aiming';
@@ -1032,14 +1033,15 @@ async function start() {
     const open = skillsOpen();
     $('ladder-title').textContent = '🗑️ MEM Skills Challenge';
     $('ladder-rule').textContent = open
-      ? `Trick shots in the IT engineers' den, round broken keyboards and mice. Knock every pin down in one ball: ${ATTEMPTS} goes at each, and fewer goes earn more stars.`
+      ? `Trick shots in the IT engineers' den, round broken keyboards and mice. Each challenge is ${GOES} different shots, one ball at each: knock every pin down to make it. Make 3 for a star, 4 for two, all ${GOES} for three.`
       : '🔒 Win the Golden Pin to open the encore.';
     const list = $('ladder');
     list.innerHTML = '';
     for (let i = CHALLENGES.length - 1; i >= 0; i--) {
       const c = CHALLENGES[i];
       const unlocked = open && isShotOpen(skills, i);
-      const got = skills.stars[c.id] ?? 0;
+      const got = starsOf(skills, c.id);
+      const best = skills.best[c.id];
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.className = `rung${unlocked ? '' : ' locked'}${unlocked && got === 0 ? ' next' : ''}`;
@@ -1047,7 +1049,7 @@ async function start() {
       b.innerHTML = `<span class="remoji">${unlocked ? c.emoji : '🔒'}</span><span class="rname">${unlocked ? escapeHtml(c.name) : '???'}${
         i === CHALLENGES.length - 1 ? '<span class="tag">FINALE</span>' : ''
       }</span><span class="rgot" aria-label="${got} of 3 stars">${stars(got)}</span><span class="rmeta">${
-        unlocked ? `Shot ${i + 1} · ${c.pins.length === 10 ? 'full rack' : `${c.pins.join('-')} pin${c.pins.length > 1 ? 's' : ''}`}` : !open ? 'Encore locked' : `Make ${escapeHtml(CHALLENGES[i - 1].name)} to unlock`
+        unlocked ? `Challenge ${i + 1} · ${GOES} shots${best !== undefined ? ` · best ${best}/${GOES}` : ''}` : !open ? 'Encore locked' : `Get a star on ${escapeHtml(CHALLENGES[i - 1].name)} to unlock`
       }</span>`;
       if (unlocked) b.addEventListener('click', () => openShotIntro(i));
       li.append(b);
@@ -1067,9 +1069,9 @@ async function start() {
     const c = CHALLENGES[i];
     $('mi-emoji').textContent = c.emoji;
     $('mi-name').textContent = c.name;
-    $('mi-stars').innerHTML = stars(skills.stars[c.id] ?? 0);
+    $('mi-stars').innerHTML = stars(starsOf(skills, c.id));
     $('mi-quote').textContent = c.blurb;
-    $('mi-format').textContent = `Skills Challenge shot ${i + 1} of ${CHALLENGES.length} at MEM · ${ATTEMPTS} goes · every pin down in one ball`;
+    $('mi-format').textContent = `Skills Challenge ${i + 1} of ${CHALLENGES.length} at MEM · ${GOES} shots, one ball each · make 3 for a star, all ${GOES} for three`;
     introAction = () => startShot(i);
     showScreen('matchintro');
   }
@@ -1082,38 +1084,39 @@ async function start() {
 
   function shotStatus() {
     const c = CHALLENGES[shot];
-    setStatus(`${c.emoji} ${c.name}: go ${attempt} of ${ATTEMPTS}`);
-    scoreboard.showPractice(`${c.name.toUpperCase()}`, `SHOT ${shot + 1} OF ${CHALLENGES.length}`, `go ${attempt} of ${ATTEMPTS} · every pin, one ball`);
+    const made = shotResults.filter(Boolean).length;
+    setStatus(`${c.emoji} ${c.name}: shot ${attempt} of ${GOES}${attempt > 1 ? ` · ${made} made` : ''}`);
+    scoreboard.showPractice(`${c.name.toUpperCase()}`, `SHOT ${attempt} OF ${GOES}`, `${shotResults.map((r) => (r ? '✔' : '✘')).join(' ')}${attempt > 1 ? ' · ' : ''}every pin, one ball`);
     updateSpinLabel();
   }
 
   /** The card after a shot: stars and what's next. Reuses the career result card. */
   function showShotResult() {
     const c = CHALLENGES[shot];
-    const made = shotDone === 'made';
+    const score = shotResults.filter(Boolean).length;
     const wasAll = allShotsMade(skills);
+    const prevBest = skills.best[c.id];
     let fresh: Item[] = [];
-    if (made) {
-      skills = recordShot(skills, c.id, attempt);
-      storage.saveSkills(skills);
-      if (!wasAll && allShotsMade(skills)) fresh = gainProgress({ skillsChampion: true }, false);
-    }
-    const got = made ? starsForAttempt(attempt) : 0;
+    skills = recordScore(skills, c.id, score);
+    storage.saveSkills(skills);
+    if (!wasAll && allShotsMade(skills)) fresh = gainProgress({ skillsChampion: true }, false);
+    const got = skillStarsFor(score);
+    const made = got > 0;
     $('go-buttons').hidden = true;
     $('go-career').hidden = false;
     leaderboard.hide();
-    $('go-title').textContent = made ? `${c.emoji} ${c.name}: made it!` : `${c.emoji} ${c.name}: out of goes`;
+    $('go-title').textContent = `${c.emoji} ${c.name}: ${score} of ${GOES}`;
     const last = shot === CHALLENGES.length - 1;
-    $('go-body').innerHTML = `<p>${
-      made ? `On go ${attempt} of ${ATTEMPTS}.` : 'The junk wins this time. Have another go!'
+    $('go-body').innerHTML = `<p class="shot-tally">${shotResults.map((r) => (r ? '✅' : '❌')).join(' ')}</p><p>${
+      score === GOES ? 'Every shot! Flawless.' : made ? (prevBest !== undefined && score > prevBest ? 'A new best!' : 'Nicely done.') : `The junk wins this time: make 3 of ${GOES} for a star.`
     }</p><div class="career-stars" aria-label="${got} of 3 stars">${stars(got)}</div>${
-      made && last && fresh.length ? '<p class="small">Every shot made. The engineers grudgingly admit you know your way round their den. 🍅🖥️</p>' : ''
+      fresh.length ? '<p class="small">Every challenge passed. The engineers grudgingly admit you know your way round their den. 🍅🖥️</p>' : ''
     }${
       fresh.length ? `<div class="unlocks">🎁 Unlocked: <b>${fresh.map((u) => escapeHtml(u.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>` : ''
     }`;
     const nextBtn = $('gc-next') as HTMLButtonElement;
-    nextBtn.hidden = !(made && !last);
-    nextBtn.textContent = 'Next shot';
+    nextBtn.hidden = !(isShotOpen(skills, shot + 1) && !last);
+    nextBtn.textContent = 'Next challenge';
     nextBtn.onclick = () => openShotIntro(shot + 1);
     ($('gc-credits') as HTMLButtonElement).hidden = true;
     const again = $('gc-rematch') as HTMLButtonElement;
