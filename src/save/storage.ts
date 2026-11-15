@@ -44,6 +44,9 @@ export const storage = {
   /** Career mode's save (checked and tidied by loadCareer). */
   career: () => read<unknown>('career', null),
   saveCareer: (c: unknown) => write('career', c),
+  /** The MEM Skills Challenge's stars (checked by loadSkills). */
+  skills: () => read<null>('skills', null),
+  saveSkills: (s: unknown) => write('skills', s),
   /** Your wins, losses and ties against each computer rival. */
   vsRecord: () => read<Record<string, { w: number; l: number; t: number }>>('vs-record', {}),
   saveVsRecord: (r: Record<string, { w: number; l: number; t: number }>) => write('vs-record', r),

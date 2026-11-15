@@ -72,7 +72,7 @@ interface Anim {
 type View =
   | { kind: 'idle' }
   | { kind: 'scores'; players: ScorePlayer[]; current: number; frames: number }
-  | { kind: 'practice'; note: string };
+  | { kind: 'practice'; note: string; title: string; sub: string };
 
 const W = 1024;
 const H = 512;
@@ -121,8 +121,8 @@ export class Scoreboard {
     this.dirty = true;
   }
 
-  showPractice(note: string) {
-    this.view = { kind: 'practice', note };
+  showPractice(note: string, title = 'PRACTICE', sub = 'throw as much as you like') {
+    this.view = { kind: 'practice', note, title, sub };
     this.dirty = true;
   }
 
@@ -183,7 +183,7 @@ export class Scoreboard {
     g.fillRect(0, 0, W, H);
     if (this.anim) this.drawAnimation(this.anim);
     else if (this.view.kind === 'idle') this.drawIdle();
-    else if (this.view.kind === 'practice') this.drawPractice(this.view.note);
+    else if (this.view.kind === 'practice') this.drawPractice(this.view.note, this.view.title, this.view.sub);
     else this.drawScores(this.view.players, this.view.current, this.view.frames);
     // Scanlines, for that monitor look
     g.fillStyle = 'rgba(0, 0, 0, 0.12)';
@@ -208,11 +208,11 @@ export class Scoreboard {
     this.text('LANE 7  ·  GOOD LUCK!', W / 2, 390, 52, th.accent2, 'center', 700);
   }
 
-  private drawPractice(note: string) {
+  private drawPractice(note: string, title: string, sub: string) {
     const th = this.theme;
-    this.text('PRACTICE', W / 2, 150, 110, th.accent);
+    this.text(title, W / 2, 150, 110, th.accent);
     this.text(note, W / 2, 320, 72, th.ink, 'center', 700);
-    this.text('throw as much as you like', W / 2, 420, 38, th.dim, 'center', 700);
+    this.text(sub, W / 2, 420, 38, th.dim, 'center', 700);
   }
 
   private drawScores(players: ScorePlayer[], current: number, count: number) {

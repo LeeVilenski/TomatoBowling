@@ -317,6 +317,25 @@ export class BowlingPhysics {
     return !this.pins[i].isEnabled();
   }
 
+  private obstacles: R.Collider[] = [];
+
+  /**
+   * Fixed blocks on the lane (the Skills Challenge's broken keyboards and mice): half-sizes,
+   * centre on the lane at (x, z), turned `angle` radians about the vertical.
+   */
+  setObstacles(list: { half: [number, number, number]; x: number; z: number; angle?: number }[]) {
+    for (const c of this.obstacles) this.world.removeCollider(c, false);
+    this.obstacles = list.map(({ half: [hx, hy, hz], x, z, angle = 0 }) =>
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(hx, hy, hz)
+          .setTranslation(x, hy, z)
+          .setRotation({ x: 0, y: Math.sin(angle / 2), z: 0, w: Math.cos(angle / 2) })
+          .setFriction(0.3)
+          .setRestitution(0.3),
+      ),
+    );
+  }
+
   /** The lane's conditions (see LaneConditions). */
   conditions: LaneConditions = { ...STANDARD_LANE };
 

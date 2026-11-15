@@ -26,6 +26,8 @@ import { chooseTarget, humanise, planThrow, pressureFor, strikeRun } from './gam
 import { RIVALS, rivalById, type Rival } from './game/rivals';
 import { addMatchStats, isChampion, isLadderOpen, isUnlocked, LADDERS, ladderOf, laneFor, loadCareer, metRivals, NO_STATS, nextRung, recordResult, starsFor, totalStars, type Ladder, type LaneRule, type Rung } from './game/career';
 import { FRAMES } from './game/scoring';
+import { allShotsMade, ATTEMPTS, CHALLENGES, isShotOpen, loadSkills, OBSTACLE_HALF, recordShot, skillsStars, starsForAttempt, type Obstacle } from './game/challenges';
+import { ObstacleView } from './scene/obstacles';
 import type { ThrowParams } from './game/physics';
 import { PathRibbon } from './scene/pathRibbon';
 import { Scoreboard, type ScoreAnimation } from './scene/scoreboard';
@@ -49,6 +51,10 @@ const SPLIT_TIP = 'split! Hit the inside of one pin hard so it bounces off the s
 // the arrows), so the swipe's slant is scaled down: ~10° of slant ≈ 3 boards at the arrows.
 const AIM_SENSITIVITY = 0.2;
 const MIN_SPEED = MIN_THROW_SPEED;
+/** Score a game of this much and MEM, the IT engineers' den, opens for free play. */
+const MEM_SCORE = 200;
+/** Longest a throw can roll before it's over anyway (seconds of game time). */
+const ROLL_LIMIT = 12;
 const MAX_SPEED = MAX_THROW_SPEED;
 const CHARGE_HALF_CYCLE = 0.8; // seconds for the power meter to go from empty to full
 const REACTION_AT = 1.1; // seconds of looking at the pins before cutting to Dave's reaction
@@ -323,11 +329,11 @@ async function start() {
   }
   /**
    * Venues you can pick for free play: the Golden Pin once you've reached the career final,
-   * and MEM (the IT engineers' den) once you're champion of Server Room Lanes.
+   * and MEM (the IT engineers' den) once you've scored 200 in a game.
    */
   const venueOpen = (id: VenueId) => {
     if (id === 'golden') return isLadderOpen(career, LADDERS.findIndex((l) => l.id === 'golden'));
-    if (id === 'mem') return progress.crowns.includes('server') || isChampion(career, LADDERS.find((l) => l.id === 'server')!.rungs);
+    if (id === 'mem') return progress.bestScore >= MEM_SCORE;
     return true;
   };
   const savedVenue = storage.text('venue', 'classic') as VenueId;
@@ -424,7 +430,7 @@ async function start() {
   replayBtn.addEventListener('click', () => controls.replay());
 
   // ---- Game mode state ----
-  type Mode = 'single' | 'pass' | 'practice' | 'cpu';
+  type Mode = 'single' | 'pass' | 'practice' | 'cpu' | 'challenge';
   let mode: Mode = 'single';
   // vs CPU: the rival is always player 2
   let rival: Rival | null = null;
@@ -449,6 +455,23 @@ async function start() {
   let practiceBall: 1 | 2 = 1;
   let practiceRack: number[] | null = null; // a spare setup being practised, or null for full racks
   let nextSetter: PinsetterMode = 'rerack';
+  // ---- Skills Challenge (career's encore at MEM): the shot being played and which go it is ----
+  let skills = loadSkills(storage.skills());
+  let shot = 0;
+  let attempt = 1;
+  /** Set once the shot is over: made it, or out of goes. */
+  let shotDone: 'made' | 'missed' | null = null;
+  const obstacleView = new ObstacleView();
+  scene.add(obstacleView.group);
+  let obstacles: Obstacle[] = [];
+  /** Puts junk on the lane: in the physics, the aim-line world, and on screen. */
+  function setObstacles(list: Obstacle[]) {
+    obstacles = list;
+    const blocks = list.map((o) => ({ half: OBSTACLE_HALF[o.kind], x: o.x, z: o.z, angle: o.angle }));
+    physics.setObstacles(blocks);
+    predictor?.setObstacles(blocks);
+    obstacleView.show(list);
+  }
   equip(equipped);
   let openScreen: ScreenId | null = null;
 
@@ -514,7 +537,7 @@ async function start() {
     phase = 'result';
     resultTime = 0;
     reactionShown = false;
-    const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : (match?.position.fresh ?? true);
+    const fresh = mode === 'practice' ? !practiceRack && practiceBall === 1 : mode === 'challenge' ? CHALLENGES[shot].pins.length === 10 : (match?.position.fresh ?? true);
     reaction = classifyThrow(knocked, standingBefore, fresh, physics.standingPins());
     // A computer rival's ball: the rival has its own say (at the same pace as Dave), and
     // there's no automatic replay (the button's there)
@@ -533,6 +556,20 @@ async function start() {
     } else if (reaction === 'spare') sound.applause(1.6, 0.8);
     else if (reaction === 'good') sound.applause(1, 0.45);
     else if (reaction === 'gutter' || reaction === 'miss') sound.groan();
+
+    if (mode === 'challenge') {
+      const made = physics.standingPins().length === 0;
+      celebrate(made && reaction !== 'strike' ? 'spare' : reaction, 1, true, { knocked });
+      if (made) {
+        shotDone = 'made';
+        setStatus(`Made it${attempt === 1 ? ' first time' : ''}! 🍅`);
+      } else if (attempt >= ATTEMPTS) {
+        shotDone = 'missed';
+        setStatus('Out of goes…');
+      } else setStatus(`Not this time: ${physics.standingPins().length} left standing`);
+      nextSetter = 'rerack';
+      return;
+    }
 
     if (mode === 'practice') {
       practiceStreak = reaction === 'strike' ? practiceStreak + 1 : fresh ? 0 : practiceStreak;
@@ -605,13 +642,23 @@ async function start() {
     sound.pinsetter();
     physics.holdBall(aimX);
     setStatus(setterMode === 'clear' ? 'Clearing the cache…' : 'Rebooting the rack…');
-    const rack = setterMode === 'rerack' && mode === 'practice' && practiceRack ? practiceRack : undefined;
+    const rack =
+      setterMode === 'rerack' && mode === 'practice' && practiceRack
+        ? practiceRack
+        : setterMode === 'rerack' && mode === 'challenge'
+          ? CHALLENGES[shot].pins
+          : undefined;
     pinsetter.start(setterMode, () => afterPinsetter(setterMode), rack);
   }
 
   /** After a throw's result: reset the pins, or if that was the last ball, show the final score. */
   function nextAfterResult() {
-    if (outcome?.gameOver) {
+    if (mode === 'challenge' && shotDone) {
+      speech.hide();
+      phase = 'aiming';
+      physics.holdBall(aimX);
+      showShotResult();
+    } else if (outcome?.gameOver) {
       outcome = null;
       speech.hide();
       phase = 'aiming';
@@ -627,6 +674,11 @@ async function start() {
     if (rushing) setFastForward(false);
     aim = 0; // each ball starts aimed straight down the lane
     phase = 'aiming';
+    if (mode === 'challenge') {
+      attempt++;
+      shotStatus();
+      return;
+    }
     if (mode === 'practice') {
       practiceBall = setterMode === 'clear' ? 2 : 1;
       const split = physics.wideSplitStanding();
@@ -753,6 +805,10 @@ async function start() {
     if (id === 'menu') {
       if (venues.current.id !== preferredVenue) selectVenue(preferredVenue, false);
       if (lane !== STANDARD_LANE) applyLane(STANDARD_LANE);
+      if (obstacles.length) {
+        setObstacles([]);
+        physics.resetPins();
+      }
       scoreboard.showIdle();
       // Dave hosts the menu on his own, back on the approach
       dave.setHead('tomato');
@@ -796,12 +852,12 @@ async function start() {
     careerRung = rung;
     careerLadder = rung ? ladderOf(rung.rival) : null;
     // Career matches are played at their ladder's venue, under its lane rule
-    selectVenue(careerLadder ? (careerLadder.id as VenueId) : preferredVenue, false);
+    selectVenue(newMode === 'challenge' ? 'mem' : careerLadder ? (careerLadder.id as VenueId) : preferredVenue, false);
     applyLane(careerLadder ? laneFor(careerLadder, STANDARD_LANE) : STANDARD_LANE);
     cpuThrow = null;
     dave.setOutfit(equipped.suit);
     dave.setHead('tomato');
-    match = newMode === 'practice' ? null : new Match(names, frames);
+    match = newMode === 'practice' || newMode === 'challenge' ? null : new Match(names, frames);
     matchLog = [];
     if (match) {
       for (const pins of log) {
@@ -830,6 +886,13 @@ async function start() {
     physics.resetPins();
     physics.holdBall(aimX);
     pinsetter.cancel();
+    if (newMode === 'challenge') {
+      const c = CHALLENGES[shot];
+      for (let p = 1; p <= 10; p++) if (!c.pins.includes(p)) physics.removePin(p - 1);
+      setObstacles(c.obstacles);
+      attempt = 1;
+      shotDone = null;
+    } else if (obstacles.length) setObstacles([]);
     setFastForward(false);
     phase = 'aiming';
     // Who's on the lane: you, and in a match against a rival, them too (waiting their turn)
@@ -852,6 +915,7 @@ async function start() {
     showScreen(null);
     if (!storage.flag('tutorial-seen')) showScreen('tutorial');
     if (match) setTurnStatus();
+    else if (newMode === 'challenge') shotStatus();
     else {
       setStatus('Practice: throw as much as you like');
       scoreboard.showPractice('Lane 7 is yours');
@@ -904,14 +968,20 @@ async function start() {
   }
 
   let viewLadder = 0;
-  function openCareer(index = currentLadder()) {
+  /** The career page after the last ladder: the MEM Skills Challenge. */
+  const SKILLS_PAGE = LADDERS.length;
+  const goldenIndex = LADDERS.findIndex((l) => l.id === 'golden');
+  const skillsOpen = () => isChampion(career, LADDERS[goldenIndex].rungs);
+  function openCareer(index = skillsOpen() ? SKILLS_PAGE : currentLadder()) {
     viewLadder = index;
+    $('career-resume').hidden = true;
+    ($('ladder-prev') as HTMLButtonElement).disabled = index === 0;
+    ($('ladder-next') as HTMLButtonElement).disabled = index === SKILLS_PAGE;
+    if (index === SKILLS_PAGE) return openSkills();
     const l = LADDERS[index];
     const open = isLadderOpen(career, index);
     $('ladder-title').textContent = `${l.emoji} ${l.name}`;
     $('ladder-rule').textContent = open ? ruleText(l.rule) : `🔒 Become champion of ${LADDERS[index - 1].name} to open.`;
-    ($('ladder-prev') as HTMLButtonElement).disabled = index === 0;
-    ($('ladder-next') as HTMLButtonElement).disabled = index === LADDERS.length - 1;
     const ladder = $('ladder');
     ladder.innerHTML = '';
     const next = nextRung(career, l.rungs);
@@ -955,7 +1025,103 @@ async function start() {
     showScreen('career');
   }
   $('ladder-prev').addEventListener('click', () => openCareer(Math.max(0, viewLadder - 1)));
-  $('ladder-next').addEventListener('click', () => openCareer(Math.min(LADDERS.length - 1, viewLadder + 1)));
+  $('ladder-next').addEventListener('click', () => openCareer(Math.min(SKILLS_PAGE, viewLadder + 1)));
+
+  /** The Skills Challenge page: six trick shots at MEM, each opening when you make the one before. */
+  function openSkills() {
+    const open = skillsOpen();
+    $('ladder-title').textContent = '🗑️ MEM Skills Challenge';
+    $('ladder-rule').textContent = open
+      ? `Trick shots in the IT engineers' den, round broken keyboards and mice. Knock every pin down in one ball: ${ATTEMPTS} goes at each, and fewer goes earn more stars.`
+      : '🔒 Win the Golden Pin to open the encore.';
+    const list = $('ladder');
+    list.innerHTML = '';
+    for (let i = CHALLENGES.length - 1; i >= 0; i--) {
+      const c = CHALLENGES[i];
+      const unlocked = open && isShotOpen(skills, i);
+      const got = skills.stars[c.id] ?? 0;
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.className = `rung${unlocked ? '' : ' locked'}${unlocked && got === 0 ? ' next' : ''}`;
+      b.disabled = !unlocked;
+      b.innerHTML = `<span class="remoji">${unlocked ? c.emoji : '🔒'}</span><span class="rname">${unlocked ? escapeHtml(c.name) : '???'}${
+        i === CHALLENGES.length - 1 ? '<span class="tag">FINALE</span>' : ''
+      }</span><span class="rgot" aria-label="${got} of 3 stars">${stars(got)}</span><span class="rmeta">${
+        unlocked ? `Shot ${i + 1} · ${c.pins.length === 10 ? 'full rack' : `${c.pins.join('-')} pin${c.pins.length > 1 ? 's' : ''}`}` : !open ? 'Encore locked' : `Make ${escapeHtml(CHALLENGES[i - 1].name)} to unlock`
+      }</span>`;
+      if (unlocked) b.addEventListener('click', () => openShotIntro(i));
+      li.append(b);
+      list.append(li);
+    }
+    const total = skillsStars(skills);
+    $('career-stars').textContent = allShotsMade(skills)
+      ? `🏆 Skills Challenge complete! ${total} of ${CHALLENGES.length * 3} stars.`
+      : total > 0
+        ? `${total} of ${CHALLENGES.length * 3} stars collected here.`
+        : '';
+    showScreen('career');
+  }
+
+  /** The card before a shot: what to do. Reuses the match intro. */
+  function openShotIntro(i: number) {
+    const c = CHALLENGES[i];
+    $('mi-emoji').textContent = c.emoji;
+    $('mi-name').textContent = c.name;
+    $('mi-stars').innerHTML = stars(skills.stars[c.id] ?? 0);
+    $('mi-quote').textContent = c.blurb;
+    $('mi-format').textContent = `Skills Challenge shot ${i + 1} of ${CHALLENGES.length} at MEM · ${ATTEMPTS} goes · every pin down in one ball`;
+    introAction = () => startShot(i);
+    showScreen('matchintro');
+  }
+
+  function startShot(i: number) {
+    shot = i;
+    rival = null;
+    startGame('challenge');
+  }
+
+  function shotStatus() {
+    const c = CHALLENGES[shot];
+    setStatus(`${c.emoji} ${c.name}: go ${attempt} of ${ATTEMPTS}`);
+    scoreboard.showPractice(`${c.name.toUpperCase()}`, `SHOT ${shot + 1} OF ${CHALLENGES.length}`, `go ${attempt} of ${ATTEMPTS} · every pin, one ball`);
+    updateSpinLabel();
+  }
+
+  /** The card after a shot: stars and what's next. Reuses the career result card. */
+  function showShotResult() {
+    const c = CHALLENGES[shot];
+    const made = shotDone === 'made';
+    const wasAll = allShotsMade(skills);
+    let fresh: Item[] = [];
+    if (made) {
+      skills = recordShot(skills, c.id, attempt);
+      storage.saveSkills(skills);
+      if (!wasAll && allShotsMade(skills)) fresh = gainProgress({ skillsChampion: true }, false);
+    }
+    const got = made ? starsForAttempt(attempt) : 0;
+    $('go-buttons').hidden = true;
+    $('go-career').hidden = false;
+    leaderboard.hide();
+    $('go-title').textContent = made ? `${c.emoji} ${c.name}: made it!` : `${c.emoji} ${c.name}: out of goes`;
+    const last = shot === CHALLENGES.length - 1;
+    $('go-body').innerHTML = `<p>${
+      made ? `On go ${attempt} of ${ATTEMPTS}.` : 'The junk wins this time. Have another go!'
+    }</p><div class="career-stars" aria-label="${got} of 3 stars">${stars(got)}</div>${
+      made && last && fresh.length ? '<p class="small">Every shot made. The engineers grudgingly admit you know your way round their den. 🍅🖥️</p>' : ''
+    }${
+      fresh.length ? `<div class="unlocks">🎁 Unlocked: <b>${fresh.map((u) => escapeHtml(u.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>` : ''
+    }`;
+    const nextBtn = $('gc-next') as HTMLButtonElement;
+    nextBtn.hidden = !(made && !last);
+    nextBtn.textContent = 'Next shot';
+    nextBtn.onclick = () => openShotIntro(shot + 1);
+    ($('gc-credits') as HTMLButtonElement).hidden = true;
+    const again = $('gc-rematch') as HTMLButtonElement;
+    again.textContent = 'Try again';
+    again.onclick = () => startShot(shot);
+    dave.react(made ? 'strike' : 'meh');
+    showScreen('gameover');
+  }
 
   $('career-resume-btn').addEventListener('click', () => {
     const saved = career.inProgress;
@@ -968,6 +1134,7 @@ async function start() {
   let intro = { ladder: 0, rung: 0 };
   function openIntro(li: number, ri: number) {
     intro = { ladder: li, rung: ri };
+    introAction = () => startCareerMatch(intro.ladder, intro.rung);
     const l = LADDERS[li];
     const rung = l.rungs[ri];
     const r = rivalById(rung.rival)!;
@@ -980,7 +1147,9 @@ async function start() {
     }`;
     showScreen('matchintro');
   }
-  $('mi-go').addEventListener('click', () => startCareerMatch(intro.ladder, intro.rung));
+  /** What the intro card's Go button starts: a career match, or a Skills Challenge shot. */
+  let introAction = () => startCareerMatch(intro.ladder, intro.rung);
+  $('mi-go').addEventListener('click', () => introAction());
 
   function startCareerMatch(li: number, ri: number, log: number[] = []) {
     const rung = LADDERS[li].rungs[ri];
@@ -1027,10 +1196,6 @@ async function start() {
       note = `<p class="small">${n.emoji} ${escapeHtml(n.name)} is ready for you.</p>`;
     }
     if (crowned && nextLadder) note = `<p class="small">${nextLadder.emoji} <b>${escapeHtml(nextLadder.name)}</b> is open!</p>`;
-    if (crowned && ladder.id === 'server') {
-      note += `<p class="small">🗑️ The engineers have let you into their den: <b>MEM</b> is open for free play (📍 on the menu).</p>`;
-      showToast('🔓 New venue unlocked: MEM');
-    }
     if (crowned && final) note = `<p class="small">You've beaten them all. Tomato Dave is the greatest bowler in the land! 🍅👑</p>`;
     $('go-body').innerHTML = `<ul class="results"><li class="${result.won ? 'win' : ''}"><span>You</span><span>${you}</span></li><li class="${!result.won && you !== them ? 'win' : ''}"><span>${rival.emoji} ${escapeHtml(rival.name)}</span><span>${them}</span></li></ul>
       ${rivalQuote(rival, result.won, you === them)}
@@ -1054,6 +1219,7 @@ async function start() {
       nextBtn.onclick = () => openCareer(li + 1);
     }
     ($('gc-credits') as HTMLButtonElement).hidden = !(result.won && final);
+    ($('gc-rematch') as HTMLButtonElement).textContent = 'Rematch';
     ($('gc-rematch') as HTMLButtonElement).onclick = () => startCareerMatch(li, i);
   }
 
@@ -1142,10 +1308,16 @@ async function start() {
       if (rivalFig.root.visible) rivalReacts();
     }
     bowler = dave;
+    const reachedMem = progress.bestScore < MEM_SCORE && top >= MEM_SCORE;
     const fresh = gainProgress({ gamesPlayed: progress.gamesPlayed + 1, bestScore: top }, false);
+    const memNote = reachedMem
+      ? `<p class="small">🗑️ ${top}! The IT engineers have let you into their den: <b>MEM</b> is open for free play (📍 on the menu).</p>`
+      : '';
+    if (reachedMem) showToast('🔓 New venue unlocked: MEM');
     if (careerRung) {
       gameUnlocks.push(...fresh);
       careerResult(careerRung);
+      if (memNote) $('go-body').insertAdjacentHTML('beforeend', memNote);
       // A full 10-frame match goes on the leaderboard like any other game (your score only,
       // never the rival's). The short 5-frame warm-up matches can't: the board is for full games.
       if (match.frames === 10) leaderboard.offer([{ score: totals[0], rolls: [...match.players[0].rolls] }]);
@@ -1157,9 +1329,11 @@ async function start() {
       return;
     }
     const unlocked = [...gameUnlocks, ...fresh];
-    const unlockNote = unlocked.length
-      ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
-      : '';
+    const unlockNote =
+      memNote +
+      (unlocked.length
+        ? `<div class="unlocks">🎁 Unlocked: <b>${unlocked.map((i) => escapeHtml(i.name)).join(', ')}</b><br />Try it on in the Wardrobe!</div>`
+        : '');
     const body = $('go-body');
     if (match.players.length === 1) {
       const score = totals[0];
@@ -1422,7 +1596,7 @@ async function start() {
     showScreen(null);
   });
   // Restarting keeps the same match: players, length, and career rung
-  const restart = () => startGame(mode, match?.players.map((p) => p.name), match?.frames, careerRung);
+  const restart = () => (mode === 'challenge' ? startShot(shot) : startGame(mode, match?.players.map((p) => p.name), match?.frames, careerRung));
   $('restart').addEventListener('click', restart);
   $('play-again').addEventListener('click', restart);
   $('pass-ready').addEventListener('click', () => showScreen(null));
@@ -1477,6 +1651,7 @@ async function start() {
         void BowlingPhysics.create().then((p) => {
           for (const i of p.pins.keys()) p.removePin(i);
           p.setConditions(lane);
+          p.setObstacles(obstacles.map((o) => ({ half: OBSTACLE_HALF[o.kind], x: o.x, z: o.z, angle: o.angle })));
           predictor = p;
         });
       }
@@ -1799,9 +1974,11 @@ async function start() {
       const b = physics.ball.translation();
       const v = physics.ball.linvel();
       const stalled = Math.hypot(v.x, v.z) < 0.2;
+      settleTime += dt; // time rolling, until it settles
       // The bowler leans after the ball, willing it on
       bowler.setEnglish(b.x / 0.45);
-      if (b.z < HEAD_PIN_Z + 0.5 || b.y < -0.2 || stalled) {
+      // (A ball trapped behind the Skills Challenge's junk can rock back and forth for ever: give up on it.)
+      if (b.z < HEAD_PIN_Z + 0.5 || b.y < -0.2 || stalled || settleTime > ROLL_LIMIT) {
         phase = 'settling';
         settleTime = 0;
       }
@@ -1915,6 +2092,10 @@ async function start() {
     startGame,
     startCpu,
     startCareerMatch,
+    startShot,
+    get skills() {
+      return skills;
+    },
     openCredits,
     get lane() {
       return lane;

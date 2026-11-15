@@ -13,7 +13,8 @@
     "check:api": "tsx scripts/api-check.ts",
     "check:browser": "tsx scripts/browser-check.ts",
     "check:rivals": "tsx scripts/rival-check.ts",
-    "check:splits": "tsx scripts/split-check.ts"
+    "check:splits": "tsx scripts/split-check.ts",
+    "check:skills": "tsx scripts/skills-check.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d": "^0.21.0",

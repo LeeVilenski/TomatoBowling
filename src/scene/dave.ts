@@ -99,6 +99,8 @@ export const OUTFITS: Record<string, Outfit> = {
   blazer: { suit: '#7a1414', bowTie: true, shirt: true, shoes: '#0a0a0a' },
   glitter: { suit: '#9b3cc7', tie: '#ffe03c', shirt: true, shoes: '#f4f4f4' },
   goldsuit: { suit: '#d4a017', tie: '#7a1414', shirt: true, shoes: '#3a2210' },
+  // A faded charcoal hoodie, no shirt or tie, and trainers that have seen a lot of server rooms
+  hoodie: { suit: '#3a3e46', shirt: false, shoes: '#6a6a66' },
   // Computer rivals' colours (they bowl in Dave's body until they get heads of their own)
   'rival-pickle': { suit: '#5c7a2a', tie: '#e8d44d', shirt: true, shoes: '#3a2a12' },
   'rival-donut': { suit: '#e06fa3', tie: '#7a3b1e', shirt: true, shoes: '#f4f4f4' },

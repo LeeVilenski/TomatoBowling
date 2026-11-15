@@ -62,4 +62,8 @@ describe("the Champion's Blazer", () => {
     expect(newlyUnlocked(before, after).map((i) => i.id)).toEqual(['blazer']);
     expect(unlockedIds(mergeProgress(after, { homeChampion: false })).has('blazer')).toBe(true);
   });
+
+  it('making every Skills Challenge shot unlocks the hoodie', () => {
+    expect(newlyUnlocked(NEW_PROGRESS, mergeProgress(NEW_PROGRESS, { skillsChampion: true })).map((i) => i.id)).toEqual(['hoodie']);
+  });
 });
